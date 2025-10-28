@@ -3542,6 +3542,7 @@ def search_iter(
     return run_gen_step_iter(gen_step, async_)
 
 
+# TODO: 支持 app, cooldown, max_workers
 @overload
 def share_iterdir(
     client: None | str | PathLike | P115Client, 
@@ -3553,6 +3554,9 @@ def share_iterdir(
     asc: Literal[0, 1] = 1, 
     normalize_attr: None | Callable[[dict], dict] = normalize_attr, 
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
+    app: str = "web", 
+    cooldown: None | float = None, 
+    max_workers: None | int = 1, 
     *, 
     async_: Literal[False] = False, 
     **request_kwargs, 
@@ -3569,6 +3573,9 @@ def share_iterdir(
     asc: Literal[0, 1] = 1, 
     normalize_attr: None | Callable[[dict], dict] = normalize_attr, 
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
+    app: str = "web", 
+    cooldown: None | float = None, 
+    max_workers: None | int = 1, 
     *, 
     async_: Literal[True], 
     **request_kwargs, 
@@ -3584,6 +3591,9 @@ def share_iterdir(
     asc: Literal[0, 1] = 1, 
     normalize_attr: None | Callable[[dict], dict] = normalize_attr, 
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
+    app: str = "web", 
+    cooldown: None | float = None, 
+    max_workers: None | int = 1, 
     *, 
     async_: Literal[False, True] = False, 
     **request_kwargs, 
@@ -3607,6 +3617,9 @@ def share_iterdir(
     :param asc: 升序排列。0: 否，1: 是
     :param normalize_attr: 把数据进行转换处理，使之便于阅读
     :param id_to_dirnode: 字典，保存 id 到对应文件的 ``(name, parent_id)`` 元组的字典
+    :param app: 使用指定 app（设备）的接口
+    :param cooldown: 冷却时间，单位为秒。如果为 None，则用默认值（非并发时为 0，并发时为 1）
+    :param max_workers: 最大并发数，如果为 None 或 <= 0，则自动确定
     :param async_: 是否异步
     :param request_kwargs: 其它请求参数
 
@@ -3683,8 +3696,7 @@ def share_iterdir_traverse(
     onerror: bool | Callable[[OSError], Any] = False, 
     normalize_attr: Callable[[dict], dict] = normalize_attr, 
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
-    raise_for_changed_count: bool = False, 
-    app: str = "android", 
+    app: str = "web", 
     cooldown: None | float = None, 
     *, 
     async_: Literal[False] = False, 
@@ -3704,8 +3716,7 @@ def share_iterdir_traverse(
     onerror: bool | Callable[[OSError], Any] = False, 
     normalize_attr: Callable[[dict], dict] = normalize_attr, 
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
-    raise_for_changed_count: bool = False, 
-    app: str = "android", 
+    app: str = "web", 
     cooldown: None | float = None, 
     *, 
     async_: Literal[True], 
@@ -3724,8 +3735,7 @@ def share_iterdir_traverse(
     onerror: bool | Callable[[OSError], Any] = False, 
     normalize_attr: Callable[[dict], dict] = normalize_attr, 
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
-    raise_for_changed_count: bool = False, 
-    app: str = "android", 
+    app: str = "web", 
     cooldown: None | float = None, 
     *, 
     async_: Literal[False, True] = False, 
@@ -3757,7 +3767,6 @@ def share_iterdir_traverse(
     :param onerror: 处理 OSError 异常。如果是 True，抛出异常；如果是 False，忽略异常；如果是调用，以异常为参数调用之
     :param normalize_attr: 把数据进行转换处理，使之便于阅读
     :param id_to_dirnode: 字典，保存 id 到对应文件的 ``(name, parent_id)`` 元组的字典
-    :param raise_for_changed_count: 分批拉取时，发现总数发生变化后，是否报错
     :param app: 使用指定 app（设备）的接口
     :param cooldown: 冷却时间，单位为秒。如果为 None，则用默认值（非并发时为 0，并发时为 1）
     :param async_: 是否异步
@@ -3774,7 +3783,6 @@ def share_iterdir_traverse(
             receive_code, 
             normalize_attr=normalize_attr, 
             id_to_dirnode=id_to_dirnode, 
-            raise_for_changed_count=raise_for_changed_count, 
             app=app, 
             cooldown=cooldown, 
             async_=async_, 
@@ -3802,8 +3810,7 @@ def share_iterdir_walk(
     onerror: bool | Callable[[OSError], Any] = False, 
     normalize_attr: Callable[[dict], dict] = normalize_attr, 
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
-    raise_for_changed_count: bool = False, 
-    app: str = "android", 
+    app: str = "web", 
     cooldown: None | float = None, 
     *, 
     async_: Literal[False] = False, 
@@ -3822,8 +3829,7 @@ def share_iterdir_walk(
     onerror: bool | Callable[[OSError], Any] = False, 
     normalize_attr: Callable[[dict], dict] = normalize_attr, 
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
-    raise_for_changed_count: bool = False, 
-    app: str = "android", 
+    app: str = "web", 
     cooldown: None | float = None, 
     *, 
     async_: Literal[True], 
@@ -3841,8 +3847,7 @@ def share_iterdir_walk(
     onerror: bool | Callable[[OSError], Any] = False, 
     normalize_attr: Callable[[dict], dict] = normalize_attr, 
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
-    raise_for_changed_count: bool = False, 
-    app: str = "android", 
+    app: str = "web", 
     cooldown: None | float = None, 
     *, 
     async_: Literal[False, True] = False, 
@@ -3863,7 +3868,6 @@ def share_iterdir_walk(
     :param onerror: 处理 OSError 异常。如果是 True，抛出异常；如果是 False，忽略异常；如果是调用，以异常为参数调用之
     :param normalize_attr: 把数据进行转换处理，使之便于阅读
     :param id_to_dirnode: 字典，保存 id 到对应文件的 ``(name, parent_id)`` 元组的字典
-    :param raise_for_changed_count: 分批拉取时，发现总数发生变化后，是否报错
     :param app: 使用指定 app（设备）的接口
     :param cooldown: 冷却时间，单位为秒。如果为 None，则用默认值（非并发时为 0，并发时为 1）
     :param async_: 是否异步
@@ -3887,7 +3891,6 @@ def share_iterdir_walk(
             receive_code, 
             normalize_attr=normalize_attr, 
             id_to_dirnode=id_to_dirnode, 
-            raise_for_changed_count=raise_for_changed_count, 
             app=app, 
             cooldown=cooldown, 
             async_=async_, 
@@ -3902,6 +3905,7 @@ def share_iterdir_walk(
     ))
 
 
+# TODO: 允许使用 app 端接口 share_downlist_app
 @overload
 def share_iter_files(
     client: None | str | PathLike | P115Client, 
@@ -3909,6 +3913,7 @@ def share_iter_files(
     receive_code: str = "", 
     cid: int | Mapping = 0, 
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
+    app: str = "web", 
     *, 
     async_: Literal[False] = False, 
     **request_kwargs, 
@@ -3921,6 +3926,7 @@ def share_iter_files(
     receive_code: str = "", 
     cid: int | Mapping = 0, 
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
+    app: str = "web", 
     *, 
     async_: Literal[True], 
     **request_kwargs, 
@@ -3931,7 +3937,8 @@ def share_iter_files(
     share_code: str, 
     receive_code: str = "", 
     cid: int | Mapping = 0, 
-    id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None,  
+    id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
+    app: str = "web", 
     *, 
     async_: Literal[False, True] = False, 
     **request_kwargs, 
@@ -3943,6 +3950,7 @@ def share_iter_files(
     :param receive_code: 接收码
     :param cid: 顶层目录的 id，从此开始遍历
     :param id_to_dirnode: 字典，保存 id 到对应文件的 ``(name, parent_id)`` 元组的字典，如果为 ...，则忽略
+    :param app: 使用指定 app（设备）的接口
     :param async_: 是否异步
     :param request_kwargs: 其它请求参数
 
@@ -3984,6 +3992,7 @@ def share_iter_files(
             client, 
             **payload, 
             id_to_dirnode=id_to_dirnode, 
+            app=app, 
             async_=async_, 
             **request_kwargs, 
         )) as get_next:
@@ -4154,3 +4163,4 @@ def iter_id_to_dirnode(
     key = cast(int | str, key)
     return ((k, DirNode(*v)) for k, v in ID_TO_DIRNODE_CACHE[key].items())
 
+# TODO: 再增加一个关于压缩文件的罗列（完全参考 share_*）：extract_iterdir, extract_iterdir_traverse, extract_iterdir_walk, extract_iter_files
