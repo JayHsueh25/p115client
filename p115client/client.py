@@ -10929,7 +10929,7 @@ class P115Client(P115OpenClient):
     @overload
     def fs_hidden_switch(
         self, 
-        payload: int | str | dict, 
+        payload: bool | int | str | dict = True, 
         /, 
         base_url: str | Callable[[], str] = "https://115.com", 
         *, 
@@ -10940,7 +10940,7 @@ class P115Client(P115OpenClient):
     @overload
     def fs_hidden_switch(
         self, 
-        payload: int | str | dict, 
+        payload: bool | int | str | dict = True, 
         /, 
         base_url: str | Callable[[], str] = "https://115.com", 
         *, 
@@ -10950,7 +10950,7 @@ class P115Client(P115OpenClient):
         ...
     def fs_hidden_switch(
         self, 
-        payload: int | str | dict, 
+        payload: bool | int | str | dict = True, 
         /, 
         base_url: str | Callable[[], str] = "https://115.com", 
         *, 
@@ -10967,15 +10967,17 @@ class P115Client(P115OpenClient):
             - valid_type: int = 1
         """
         api = complete_url(base_url=base_url, query={"ct": "hiddenfiles", "ac": "switching"})
-        if isinstance(payload, (int, str)):
-            payload = {"safe_pwd": payload}
-        payload = {"valid_type": 1, "show": 1, "safe_pwd": "", **payload}
+        if isinstance(payload, bool):
+            payload = {"show": int(payload), "safe_pwd": "000000"}
+        elif isinstance(payload, (int, str)):
+            payload = {"safe_pwd": f"{payload:>06}"}
+        payload = {"show": 1, "safe_pwd": "", "valid_type": 1, **payload}
         return self.request(url=api, method="POST", data=payload, async_=async_, **request_kwargs)
 
     @overload
     def fs_hidden_switch_app(
         self, 
-        payload: int | str | dict, 
+        payload: bool | int | str | dict = True, 
         /, 
         app: str = "android", 
         base_url: str | Callable[[], str] = "https://proapi.115.com", 
@@ -10987,7 +10989,7 @@ class P115Client(P115OpenClient):
     @overload
     def fs_hidden_switch_app(
         self, 
-        payload: int | str | dict, 
+        payload: bool | int | str | dict = True, 
         /, 
         app: str = "android", 
         base_url: str | Callable[[], str] = "https://proapi.115.com", 
@@ -10998,7 +11000,7 @@ class P115Client(P115OpenClient):
         ...
     def fs_hidden_switch_app(
         self, 
-        payload: int | str | dict, 
+        payload: bool | int | str | dict = True, 
         /, 
         app: str = "android", 
         base_url: str | Callable[[], str] = "https://proapi.115.com", 
@@ -11020,8 +11022,10 @@ class P115Client(P115OpenClient):
             - show: 0 | 1 = 1    💡 0: 退出 1:进入
         """
         api = complete_url("/files/hiddenswitch", base_url=base_url, app=app)
-        if isinstance(payload, (int, str)):
-            payload = {"safe_pwd": md5(str(payload).encode("ascii")).hexdigest()}
+        if isinstance(payload, bool):
+            payload = {"show": int(payload), "safe_pwd": "670b14728ad9902aecba32e22fa4f6bd"}
+        elif isinstance(payload, (int, str)):
+            payload = {"safe_pwd": md5(f"{payload:>06}".encode("ascii")).hexdigest()}
         payload = {"show": 1, "safe_pwd": "", **payload}
         return self.request(url=api, params=payload, async_=async_, **request_kwargs)
 
@@ -16582,9 +16586,9 @@ class P115Client(P115OpenClient):
     ) -> dict | Coroutine[Any, Any, dict]:
         """获取登录信息
 
-        GET https://proapi.115.com/android/2.0/user/login_info
+        GET https://proapi.115.com/android/2.0/login_info
         """
-        api = complete_url("/2.0/user/login_info", base_url=base_url, app=app)
+        api = complete_url("/2.0/login_info", base_url=base_url, app=app)
         return self.request(url=api, async_=async_, **request_kwargs)
 
     @overload
@@ -20915,12 +20919,11 @@ class P115Client(P115OpenClient):
 
     ########## Recyclebin API ##########
 
-    @overload # type: ignore
+    @overload
     def recyclebin_clean(
         self, 
-        payload: int | str | Iterable[int | str] | dict = {}, 
+        payload: int | str | Iterable[int | str] | dict = "", 
         /, 
-        password: str = "", 
         base_url: str | Callable[[], str] = "https://webapi.115.com", 
         *, 
         async_: Literal[False] = False, 
@@ -20930,9 +20933,8 @@ class P115Client(P115OpenClient):
     @overload
     def recyclebin_clean(
         self, 
-        payload: int | str | Iterable[int | str] | dict = {}, 
+        payload: int | str | Iterable[int | str] | dict = "", 
         /, 
-        password: str = "", 
         base_url: str | Callable[[], str] = "https://webapi.115.com", 
         *, 
         async_: Literal[True], 
@@ -20941,9 +20943,8 @@ class P115Client(P115OpenClient):
         ...
     def recyclebin_clean(
         self, 
-        payload: int | str | Iterable[int | str] | dict = {}, 
+        payload: int | str | Iterable[int | str] | dict = "", 
         /, 
-        password: str = "", 
         base_url: str | Callable[[], str] = "https://webapi.115.com", 
         *, 
         async_: Literal[False, True] = False, 
@@ -20957,23 +20958,28 @@ class P115Client(P115OpenClient):
             - rid[0]: int | str 💡 如果没有指定任一 rid，就是清空回收站
             - rid[1]: int | str
             - ...
-            - password: int | str = <default> 💡 密码，是 6 位数字
+            - password: int | str = "000000" 💡 密码，是 6 位数字
         """
         api = complete_url("/rb/clean", base_url=base_url)
         if isinstance(payload, (int, str)):
-            payload = {"rid[0]": payload}
+            payload = str(payload)
+            if len(payload) <= 6:
+                payload = {"password": payload}
+            else:
+                payload = {"rid[0]": payload}
         elif not isinstance(payload, dict):
             payload = {f"rid[{i}]": rid for i, rid in enumerate(payload)}
-        if password:
-            payload.setdefault("password", password)
+        if password := payload.get("password"):
+            payload["password"] = f"{password:>06}"
+        else:
+            payload["password"] = "000000"
         return self.request(url=api, method="POST", data=payload, async_=async_, **request_kwargs)
 
     @overload
     def recyclebin_clean_app(
         self, 
-        payload: int | str | Iterable[int | str] | dict = {}, 
+        payload: int | str | Iterable[int | str] | dict = "", 
         /, 
-        password: str = "", 
         app: str = "android", 
         base_url: str | Callable[[], str] = "https://proapi.115.com", 
         *, 
@@ -20984,9 +20990,8 @@ class P115Client(P115OpenClient):
     @overload
     def recyclebin_clean_app(
         self, 
-        payload: int | str | Iterable[int | str] | dict = {}, 
+        payload: int | str | Iterable[int | str] | dict = "", 
         /, 
-        password: str = "", 
         app: str = "android", 
         base_url: str | Callable[[], str] = "https://proapi.115.com", 
         *, 
@@ -20996,9 +21001,8 @@ class P115Client(P115OpenClient):
         ...
     def recyclebin_clean_app(
         self, 
-        payload: int | str | Iterable[int | str] | dict = {}, 
+        payload: int | str | Iterable[int | str] | dict = "", 
         /, 
-        password: str = "", 
         app: str = "android", 
         base_url: str | Callable[[], str] = "https://proapi.115.com", 
         *, 
@@ -21010,19 +21014,24 @@ class P115Client(P115OpenClient):
         POST https://proapi.115.com/android/rb/secret_del
 
         :payload:
-            - tid: int | str 💡 多个用逗号 "," 隔开
-            - password: int | str = <default> 💡 密码，是 6 位数字
+            - tid: int | str = "" 💡 多个用逗号 "," 隔开
+            - password: int | str = "000000" 💡 密码，是 6 位数字
             - user_id: int | str = <default> 💡 用户 id
         """
         api = complete_url("/rb/secret_del", base_url=base_url, app=app)
         if isinstance(payload, (int, str)):
-            payload = {"tid": payload, "user_id": self.user_id}
-        elif isinstance(payload, dict):
-            payload = dict(payload, user_id=self.user_id)
+            payload = str(payload)
+            if len(payload) <= 6:
+                payload = {"password": payload}
+            else:
+                payload = {"tid": payload}
+        elif not isinstance(payload, dict):
+            payload = {"tid": ",".join(map(str, payload))}
+        if password := payload.get("password"):
+            payload["password"] = f"{password:>06}"
         else:
-            payload = {"tid": ",".join(map(str, payload)), "user_id": self.user_id}
-        if password:
-            payload.setdefault("password", password)
+            payload["password"] = "000000"
+        payload.setdefault("user_id", self.user_id)
         return self.request(url=api, method="POST", data=payload, async_=async_, **request_kwargs)
 
     @overload
@@ -22005,7 +22014,7 @@ class P115Client(P115OpenClient):
         payload: str | dict, 
         /, 
         app: str = "android", 
-        base_url: str | Callable[[], str] = "https://webapi.115.com", 
+        base_url: str | Callable[[], str] = "https://proapi.115.com", 
         *, 
         async_: Literal[False] = False, 
         **request_kwargs, 
@@ -22017,7 +22026,7 @@ class P115Client(P115OpenClient):
         payload: str | dict, 
         /, 
         app: str = "android", 
-        base_url: str | Callable[[], str] = "https://webapi.115.com", 
+        base_url: str | Callable[[], str] = "https://proapi.115.com", 
         *, 
         async_: Literal[True], 
         **request_kwargs, 
@@ -22028,7 +22037,7 @@ class P115Client(P115OpenClient):
         payload: str | dict, 
         /, 
         app: str = "android", 
-        base_url: str | Callable[[], str] = "https://webapi.115.com", 
+        base_url: str | Callable[[], str] = "https://proapi.115.com", 
         *, 
         async_: Literal[False, True] = False, 
         **request_kwargs, 
@@ -24998,7 +25007,7 @@ class P115Client(P115OpenClient):
     @overload
     def user_teen_mode_state_set(
         self, 
-        payload: dict, 
+        payload: bool | dict = True, 
         /, 
         app: str = "web", 
         base_url: str | Callable[[], str] = "https://passportapi.115.com", 
@@ -25010,7 +25019,7 @@ class P115Client(P115OpenClient):
     @overload
     def user_teen_mode_state_set(
         self, 
-        payload: dict, 
+        payload: bool | dict = True, 
         /, 
         app: str = "web", 
         base_url: str | Callable[[], str] = "https://passportapi.115.com", 
@@ -25021,7 +25030,7 @@ class P115Client(P115OpenClient):
         ...
     def user_teen_mode_state_set(
         self, 
-        payload: dict, 
+        payload: bool | dict = True, 
         /, 
         app: str = "web", 
         base_url: str | Callable[[], str] = "https://passportapi.115.com", 
@@ -25033,32 +25042,17 @@ class P115Client(P115OpenClient):
 
         POST https://passportapi.115.com/app/1.0/android/1.0/user/teen_mode_set_state
 
-        .. todo::
-            密码需要加密，但目前网页版不可用，后面等它完成了，再把加密算法添加进来（目前从网页版摘取的算法如下）
-
-            .. code:: python
-
-                def i32_truncate(n: int, /) -> int:
-                    n &= (1 << 32) - 1
-                    if n >= 1 << (32 - 1):
-                        n -= (1 << 32)
-                    return n
-
-                def sign_passwd(
-                    passwd: int | str, 
-                    user_id: int | str, 
-                ) -> str:
-                    s = f"{passwd}{user_id}62454aa2c6fd4"
-                    t = 0
-                    for c in bytes(s, "ascii"):
-                        t = i32_truncate((t << 5) - t + c)
-                    return (format(abs(t), "x").zfill(8) * 4)[:32]
-
         :payload:
             - state: 0 | 1 💡 是否开启
-            - passwd: str = <default> 💡 密码（4 位数字），递交此参数时需要经过加密
+            - passwd: str = "0000" 💡 密码（4 位数字），需要经过 md5 签名处理，`md5(f"{passwd}{user_id}62454aa2c6fd4".encode("ascii")).hexdigest()`
         """
         api = complete_url(f"/app/1.0/{app}/1.0/user/teen_mode_set_state", base_url=base_url)
+        if isinstance(payload, bool):
+            payload = {"state": int(payload), "passwd": "0000"}
+        else:
+            payload.setdefault("passwd", "0000")
+        if len(str(passwd := payload.get("passwd"))):
+            payload["passwd"] = md5(f"{passwd:>04}{self.user_id}62454aa2c6fd4".encode("ascii")).hexdigest()
         return self.request(url=api, method="POST", data=payload, async_=async_, **request_kwargs)
 
     @overload
