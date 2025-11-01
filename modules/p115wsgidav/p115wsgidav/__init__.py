@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 __author__ = "ChenyangGao <https://chenyanggao.github.io>"
-__version__ = (0, 0, 1)
+__version__ = (0, 0, 2)
 __license__ = "GPLv3 <https://www.gnu.org/licenses/gpl-3.0.txt>"
 __all__ = ["FileResource", "FolderResource", "P115FileSystemProvider"]
 
@@ -22,7 +22,7 @@ from weakref import WeakKeyDictionary
 
 from cachedict import LRUDict, TTLDict
 from p115client import check_response, P115Client
-from p115client.tool import iterdir, normalize_attr_simple, traverse_tree_with_path, type_of_attr
+from p115client.tool import iterdir, normalize_attr, traverse_tree_with_path, type_of_attr
 from wsgidav.wsgidav_app import WsgiDAVApp # type: ignore
 from wsgidav.dav_error import DAVError # type: ignore
 from wsgidav.dav_provider import DAVCollection, DAVNonCollection, DAVProvider # type: ignore
@@ -335,7 +335,6 @@ class FolderResource(DavPathBase, DAVCollection):
         for attr in iterdir(
             self.client, 
             self.id, 
-            normalize_attr=normalize_attr_simple, 
             app="android", 
         ):
             name = attr["name"]
@@ -417,10 +416,11 @@ class P115FileSystemProvider(DAVProvider):
         client: str | PathLike | P115Client = Path("~/115-cookies.txt").expanduser(), 
         origin_302: bool | float | str = True, 
         use_thumbs: bool = True, 
+        check_for_relogin: bool = False, 
     ):
         super().__init__()
         if not isinstance(client, P115Client):
-            client = P115Client(client, check_for_relogin=True)
+            client = P115Client(client, check_for_relogin=check_for_relogin)
         self.client = client
         self.origin_302 = ""
         if not origin_302:
@@ -460,7 +460,7 @@ class P115FileSystemProvider(DAVProvider):
         resp = check_response(client.fs_dir_getid_app(path))
         if cid := int(resp["id"]):
             resp = check_response(client.fs_file(cid))
-            return FolderResource(path, environ, normalize_attr_simple(resp["data"][0]))
+            return FolderResource(path, environ, normalize_attr(resp["data"][0]))
         dir_, name = splitpath(path)
         inst = self.get_resource_inst(dir_, environ, must_be_folder=True)
         if isinstance(inst, FolderResource):

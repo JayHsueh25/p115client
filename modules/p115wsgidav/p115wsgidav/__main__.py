@@ -97,6 +97,7 @@ def main(argv: None | list[str] | Namespace = None, /):
         P115Client(cookies_path, check_for_relogin=args.check_for_relogin), 
         origin_302=origin_302, 
         use_thumbs=not args.no_thumbs, 
+        check_for_relogin=args.check_for_relogin, 
     )
     provider.run_forever(run_config)
 
