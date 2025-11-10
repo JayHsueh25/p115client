@@ -22,7 +22,7 @@ P115FS.run_forever()
 
 ```console
 $ p115ftp -h
-usage: [-h] [-H HOST] [-P PORT] [-cp COOKIES_PATH] [-cl] [-nt] [-l] [-v]
+usage: p115ftp [-h] [-H HOST] [-P PORT] [-cp COOKIES_PATH] [-cl] [-ut] [-ll LOG_LEVEL] [-l] [-v]
 
     🕸️ Python 115 FTP Server 🕷️
 
@@ -52,7 +52,9 @@ options:
                         
   -cl, --check-for-relogin
                         当风控时，自动重新扫码登录
-  -nt, --no-thumbs      不要为请求图片链接提供缩略图
+  -ut, --use-thumbs     为请求图片链接提供缩略图 CDN 链接
+  -ll, --log-level LOG_LEVEL
+                        指定日志级别，可以是数字或名称，不传此参数则不输出日志，默认值: 'ERROR'
   -l, --license         输出授权信息
   -v, --version         输出版本号
 ```

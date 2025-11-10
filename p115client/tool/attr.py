@@ -372,7 +372,7 @@ def normalize_attr_app2[D: dict[str, Any]](
         if "file_category" in info:
             is_dir = not int(info["file_category"])
         else:
-            is_dir = bool(info.get("sha1") or info.get("file_sha1"))
+            is_dir = bool(info.get("sha1") or info.get("file_sha1") or info.get("pick_code", "").startswith("f"))
         attr["id"] = int(info["file_id"])
         attr["parent_id"] = int(info["parent_id"])
         attr["name"] = info["file_name"]
@@ -401,6 +401,11 @@ def normalize_attr_app2[D: dict[str, Any]](
         if "pickcode" in attr:
             attr["pick_code"] = attr["pickcode"]
         if is_dir:
+            if "category_desc" in info:
+                attr["desc"] = info["category_desc"]
+            if "category_cover" in info:
+                attr["cover"] = info["category_cover"]
+        else:
             if "thumb_url" in info:
                 attr["thumb"] = info["thumb_url"]
             if "file_description" in info:
@@ -409,23 +414,18 @@ def normalize_attr_app2[D: dict[str, Any]](
                 attr["file_type"] = int(info["file_tag"])
             if "music_cover" in info:
                 attr["cover"] = info["music_cover"]
-            if "user_pptime" in info:
-                attr["ctime"] = attr["user_ptime"] = int(info["user_pptime"])
-            if "user_ptime" in info:
-                attr["mtime"] = attr["user_utime"] = int(info["user_ptime"])
-            if "user_utime" in info:
-                attr["utime"] = int(info["user_utime"])
-        else:
-            if "category_desc" in info:
-                attr["desc"] = info["category_desc"]
-            if "category_cover" in info:
-                attr["cover"] = info["category_cover"]
-            if "pptime" in info:
-                attr["ctime"] = attr["user_ptime"] = int(info["pptime"])
-            if "ptime" in info:
-                attr["mtime"] = attr["user_utime"] = int(info["ptime"])
-            if "utime" in info:
-                attr["utime"] = int(info["utime"])
+        if "user_pptime" in info:
+            attr["ctime"] = attr["user_ptime"] = int(info["user_pptime"])
+        elif "pptime" in info:
+            attr["ctime"] = attr["user_ptime"] = int(info["pptime"])
+        if "user_ptime" in info:
+            attr["mtime"] = attr["user_utime"] = int(info["user_ptime"])
+        elif "ptime" in info:
+            attr["mtime"] = attr["user_utime"] = int(info["ptime"])
+        if "user_utime" in info:
+            attr["utime"] = int(info["user_utime"])
+        elif "utime" in info:
+            attr["utime"] = int(info["utime"])
         attr["ico"] = info.get("ico", "folder" if attr["is_dir"] else "")
         if "fl" in info:
             attr["labels"] = info["fl"]

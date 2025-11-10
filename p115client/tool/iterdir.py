@@ -796,6 +796,7 @@ def iterdir(
     cid: int | str | Mapping = 0, 
     page_size: int = 0, 
     first_page_size: int = 0, 
+    start: int = 0, 
     order: Literal["file_name", "file_size", "file_type", "user_utime", "user_ptime", "user_otime"] = "user_ptime", 
     asc: Literal[0, 1] = 1, 
     show_dir: Literal[0, 1] = 1, 
@@ -818,6 +819,7 @@ def iterdir(
     cid: int | str | Mapping = 0, 
     page_size: int = 0, 
     first_page_size: int = 0, 
+    start: int = 0, 
     order: Literal["file_name", "file_size", "file_type", "user_utime", "user_ptime", "user_otime"] = "user_ptime", 
     asc: Literal[0, 1] = 1, 
     show_dir: Literal[0, 1] = 1, 
@@ -839,6 +841,7 @@ def iterdir(
     cid: int | str | Mapping = 0, 
     page_size: int = 0, 
     first_page_size: int = 0, 
+    start: int = 0, 
     order: Literal["file_name", "file_size", "file_type", "user_utime", "user_ptime", "user_otime"] = "user_ptime", 
     asc: Literal[0, 1] = 1, 
     show_dir: Literal[0, 1] = 1, 
@@ -860,6 +863,7 @@ def iterdir(
     :param cid: 目录 id 或 pickcode
     :param page_size: 分页大小
     :param first_page_size: 首次拉取的分页大小，如果 <= 0，则和 `page_size` 相同
+    :param start: 开始索引，从 0 开始
     :param order: 排序
 
         - "file_name": 文件名
@@ -895,7 +899,7 @@ def iterdir(
         client, 
         payload={
             "asc": asc, "cid": to_id(cid), "cur": 1, "count_folders": 1, 
-            "fc_mix": fc_mix, "show_dir": show_dir, "o": order, "offset": 0, 
+            "fc_mix": fc_mix, "show_dir": show_dir, "o": order, "offset": start, 
         }, 
         page_size=page_size, 
         first_page_size=first_page_size, 
@@ -3551,6 +3555,7 @@ def share_iterdir(
     receive_code: str = "", 
     cid: int | Mapping = 0, 
     page_size: int = 0, 
+    start: int = 0, 
     order: Literal["file_name", "file_size", "user_ptime"] = "user_ptime", 
     asc: Literal[0, 1] = 1, 
     normalize_attr: None | Callable[[dict], dict] = normalize_attr, 
@@ -3570,6 +3575,7 @@ def share_iterdir(
     receive_code: str = "", 
     cid: int | Mapping = 0, 
     page_size: int = 0, 
+    start: int = 0, 
     order: Literal["file_name", "file_size", "user_ptime"] = "user_ptime", 
     asc: Literal[0, 1] = 1, 
     normalize_attr: None | Callable[[dict], dict] = normalize_attr, 
@@ -3588,6 +3594,7 @@ def share_iterdir(
     receive_code: str = "", 
     cid: int | Mapping = 0, 
     page_size: int = 0, 
+    start: int = 0, 
     order: Literal["file_name", "file_size", "user_ptime"] = "user_ptime", 
     asc: Literal[0, 1] = 1, 
     normalize_attr: None | Callable[[dict], dict] = normalize_attr, 
@@ -3609,6 +3616,7 @@ def share_iterdir(
     :param receive_code: 接收码
     :param cid: 目录的 id
     :param page_size: 分页大小
+    :param start: 开始索引，从 0 开始
     :param order: 排序
 
         - "file_name": 文件名
@@ -3656,7 +3664,7 @@ def share_iterdir(
             payload["receive_code"] = resp["data"]["receive_code"]
         if id_to_dirnode is None:
             id_to_dirnode = ID_TO_DIRNODE_CACHE[payload["share_code"]]
-        offset = 0
+        offset = start
         payload.update({
             "cid": cid, 
             "limit": page_size, 
@@ -3691,6 +3699,7 @@ def share_iterdir(
     return run_gen_step_iter(gen_step, async_)
 
 
+# TODO: 在 iterdir_generic 和 iter_walk 层面实现高并发调用
 @overload
 def share_iterdir_traverse(
     client: None | str | PathLike | P115Client, 

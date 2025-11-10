@@ -313,7 +313,7 @@ class FolderResource(DavPathBase, DAVCollection):
         dest_path = dest_path.rstrip("/")
         if self.path == dest_path:
             return
-        dir0, name0 = splitpath(self.path)
+        _, name0 = splitpath(self.path)
         dir1, name1 = splitpath(dest_path)
         if name0 != name1:
             raise DAVError(403)
@@ -331,7 +331,8 @@ class FolderResource(DavPathBase, DAVCollection):
     def create_collection(self, /, name: str):
         check_response(self.client.fs_mkdir_app(name, pid=self.id))
 
-    @ttl_property.of(10)
+    # TODO: 默认情况下，缓存很长时间，但是发生移动或删除，则会清掉此缓存
+    @ttl_property.of(1)
     def children(self, /) -> dict[str, FileResource | FolderResource]:
         if not self.path:
             raise DAVError(404)
@@ -356,7 +357,7 @@ class FolderResource(DavPathBase, DAVCollection):
             raise DAVError(404) from e
         return children
 
-    @ttl_property.of(10)
+    @ttl_property.of(1)
     def descendants(self, /) -> list[FileResource | FolderResource]:
         if not self.path:
             raise DAVError(404)
@@ -392,7 +393,7 @@ class FolderResource(DavPathBase, DAVCollection):
                 if collections if item.is_collection else resources:
                     add_descendant(item)
         if depth_first and len(descendants) > 1:
-            d: dict[int, int] = {a["id"]: a["parent_id"] for a in descendants}
+            d: dict[int, int] = {a.id: a.parent_id for a in descendants}
             depth_d: dict[int, int] = {}
             def get_depth(id: int, /) -> int:
                 try:
@@ -401,27 +402,26 @@ class FolderResource(DavPathBase, DAVCollection):
                     if id in d:
                         return 1 + get_depth(d[id])
                     return 0
-            descendants.sort(key=lambda a: get_depth(a["id"]), reverse=True)
+            descendants.sort(key=lambda a: get_depth(a.id), reverse=True)
         return descendants
 
     def get_member(self, /, name: str) -> None | FileResource | FolderResource:
+        if not (dir_ := self.path):
+            raise DAVError(404)
         if inst := self.children.get(name):
-            if not (dir_ := self.path):
-                raise DAVError(404)
-            if commonpath((inst.path, dir_)) == dir_:
+            if inst.path and commonpath((inst.path, dir_)) == dir_:
                 return inst
         return None
 
     def get_member_list(self, /) -> list[FileResource | FolderResource]:
         if not (dir_ := self.path):
             raise DAVError(404)
-        return [a for a in self.children.values() if commonpath((a.path, dir_)) == dir_]
+        return [a for a in self.children.values() if a.path and commonpath((a.path, dir_)) == dir_]
 
     def get_member_names(self, /) -> list[str]:
-        
         if not (dir_ := self.path):
             raise DAVError(404)
-        return [n for n, a in self.children.items() if commonpath((a.path, dir_)) == dir_]
+        return [n for n, a in self.children.items() if a.path and commonpath((a.path, dir_)) == dir_]
 
 
 class P115FileSystemProvider(DAVProvider):
@@ -526,5 +526,6 @@ if __name__ == "__main__":
 # https://wsgidav.readthedocs.io/en/latest/user_guide_configure.html
 # https://wsgidav.readthedocs.io/en/latest/_modules/wsgidav/dav_provider.html#DAVCollection
 
-# TODO: p115dav 等其它模块，也可基于此来扩展
-# TODO: 再提供一个基于数据库的版本，给 p115servedb 使用
+# TODO: 提供对拉取到数据库的缓存机制（使用数据库实现，默认是内存数据库，也可以把数据库保存到本地目录）
+# TODO: 这个数据库模块，做一个单独的模块，以便提供给 p115wsgidav,p115ftp,p115fuse 等共用
+

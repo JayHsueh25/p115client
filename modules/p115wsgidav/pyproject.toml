@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "p115wsgidav"
-version = "0.0.3"
+version = "0.0.3.3"
 description = "Python 115 WsgiDAV"
 authors = ["ChenyangGao <wosiwujm@gmail.com>"]
 license = "MIT"

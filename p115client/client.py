@@ -115,6 +115,14 @@ def default_parse(_, content: Buffer, /):
     return json_loads(memoryview(content))
 
 
+def md5_secret_password(password: None | int | str = "670b14728ad9902aecba32e22fa4f6bd", /) -> str:
+    if not password:
+        return "670b14728ad9902aecba32e22fa4f6bd"
+    if isinstance(password, str) and len(password) == 32:
+        return password
+    return md5(f"{password:>06}".encode("ascii")).hexdigest()
+
+
 def get_request(
     async_: None | bool = None, 
     request_kwargs: None | dict = None, 
@@ -262,6 +270,9 @@ def check_response(resp: dict | Awaitable[dict], /) -> dict | Coroutine[Any, Any
                 # {"state": false, "errno": 300104, "error": "文件超过200MB，暂不支持播放"}
                 case 300104:
                     raise P115OSError(errno.EFBIG, resp)
+                # {"state": false, "errno": 320001, "error": "很抱歉,安全密钥不正确"}
+                case 320001:
+                    raise P115OSError(errno.EINVAL, resp)
                 # {"state": false, "errno": 590075, "error": "操作太频繁，请稍候再试"}
                 case 590075:
                     raise BusyOSError(errno.EBUSY, resp)
@@ -6352,6 +6363,63 @@ class P115Client(P115OpenClient):
         return get_request(async_, request_kwargs, self=self)(url=api, **request_kwargs)
 
     @overload
+    def app_publick_key(
+        self: None | ClientRequestMixin = None, 
+        /, 
+        app: str = "web", 
+        base_url: str | Callable[[], str] = "https://passportapi.115.com", 
+        *, 
+        async_: Literal[False] = False, 
+        **request_kwargs
+    ) -> dict:
+        ...
+    @overload
+    def app_publick_key(
+        self: None | ClientRequestMixin = None, 
+        /, 
+        app: str = "web", 
+        base_url: str | Callable[[], str] = "https://passportapi.115.com", 
+        *, 
+        async_: Literal[True], 
+        **request_kwargs
+    ) -> Coroutine[Any, Any, dict]:
+        ...
+    def app_publick_key(
+        self: None | ClientRequestMixin = None, 
+        /, 
+        app: str = "web", 
+        base_url: str | Callable[[], str] = "https://passportapi.115.com", 
+        *, 
+        async_: Literal[False, True] = False, 
+        **request_kwargs
+    ) -> dict | Coroutine[Any, Any, dict]:
+        """获取 RSA 加密公钥，用于某些情况下的加密
+
+        GET https://passportapi.115.com/app/1.0/web/1.0/login/getKey
+
+        .. note::
+            可以作为 ``staticmethod`` 使用
+
+            返回的公钥是签名证书，并经过 BASE64 处理，可用下面步骤还原
+
+            .. code::
+        
+                from base64 import b64decode
+                from p115client import P115Client
+
+                resp = P115Client.app_publick_key()
+                perm = b64decode(resp["data"]["key"])
+
+                # pip install pycryptodome
+                from Crypto.PublicKey import RSA
+
+                pubkey = RSA.import_key(perm)
+                print(repr(pubkey))
+        """
+        api = complete_url(f"/app/1.0/{app}/1.0/login/getKey", base_url=base_url)
+        return get_request(async_, request_kwargs, self=self)(url=api, **request_kwargs)
+
+    @overload
     def app_version_list(
         self: None | ClientRequestMixin = None, 
         /, 
@@ -10929,7 +10997,7 @@ class P115Client(P115OpenClient):
     @overload
     def fs_hidden_switch(
         self, 
-        payload: bool | int | str | dict = True, 
+        payload: bool | int | str | dict = False, 
         /, 
         base_url: str | Callable[[], str] = "https://115.com", 
         *, 
@@ -10940,7 +11008,7 @@ class P115Client(P115OpenClient):
     @overload
     def fs_hidden_switch(
         self, 
-        payload: bool | int | str | dict = True, 
+        payload: bool | int | str | dict = False, 
         /, 
         base_url: str | Callable[[], str] = "https://115.com", 
         *, 
@@ -10950,7 +11018,7 @@ class P115Client(P115OpenClient):
         ...
     def fs_hidden_switch(
         self, 
-        payload: bool | int | str | dict = True, 
+        payload: bool | int | str | dict = False, 
         /, 
         base_url: str | Callable[[], str] = "https://115.com", 
         *, 
@@ -10961,23 +11029,32 @@ class P115Client(P115OpenClient):
 
         POST https://115.com/?ct=hiddenfiles&ac=switching
 
+        .. tip::
+            开启隐藏模式时，需要提供安全密钥，关闭时则不需要
+
+        .. tip::
+            这个接口必须提供安全密钥。如果不提供，则默认使用 "000000"，在不必要的情况下，完全可以把安全密钥设为这个值
+
+        .. note::
+            这个接口会返回一个 "token" 字段，可以提供给某些接口，作为通过安全密钥验证的凭证
+
         :payload:
-            - safe_pwd: str = "" 💡 密码，如果需要进入隐藏模式，请传递此参数
-            - show: 0 | 1 = 1
-            - valid_type: int = 1
+            - safe_pwd: str = "000000" 💡 安全密钥
+            - show: 0 | 1 = <default>  💡 是否开启隐藏模式：0:关闭 1:开启
+            - valid_type: int = <default>
         """
         api = complete_url(base_url=base_url, query={"ct": "hiddenfiles", "ac": "switching"})
-        if isinstance(payload, bool):
-            payload = {"show": int(payload), "safe_pwd": "000000"}
+        if payload in (0, 1):
+            payload = {"show": int(cast(int, payload))}
         elif isinstance(payload, (int, str)):
-            payload = {"safe_pwd": f"{payload:>06}"}
-        payload = {"show": 1, "safe_pwd": "", "valid_type": 1, **payload}
+            payload = {"show": 1, "safe_pwd": f"{payload:>06}"}
+        payload["safe_pwd"] = format(payload.get("safe_pwd") or "", ">06")
         return self.request(url=api, method="POST", data=payload, async_=async_, **request_kwargs)
 
     @overload
     def fs_hidden_switch_app(
         self, 
-        payload: bool | int | str | dict = True, 
+        payload: bool | int | str | dict = False, 
         /, 
         app: str = "android", 
         base_url: str | Callable[[], str] = "https://proapi.115.com", 
@@ -10989,7 +11066,7 @@ class P115Client(P115OpenClient):
     @overload
     def fs_hidden_switch_app(
         self, 
-        payload: bool | int | str | dict = True, 
+        payload: bool | int | str | dict = False, 
         /, 
         app: str = "android", 
         base_url: str | Callable[[], str] = "https://proapi.115.com", 
@@ -11000,7 +11077,7 @@ class P115Client(P115OpenClient):
         ...
     def fs_hidden_switch_app(
         self, 
-        payload: bool | int | str | dict = True, 
+        payload: bool | int | str | dict = False, 
         /, 
         app: str = "android", 
         base_url: str | Callable[[], str] = "https://proapi.115.com", 
@@ -11012,21 +11089,20 @@ class P115Client(P115OpenClient):
 
         GET https://proapi.115.com/android/files/hiddenswitch
 
-        .. caution::
-            直接调用这个接口，似乎并不能直接进入隐藏模式，需要先调用如下接口验证一下密码
-
-            > POST https://passportapi.115.com/app/1.0/android/1.0/user/security_key_check
+        .. note::
+            可以在设置中的【账号安全/安全密钥】页面下，关闭【文件(隐藏模式/清空删除回收站)】的按钮，就不需要传安全密钥了
 
         :payload:
-            - safe_pwd: str = "" 💡 密码，如果需要进入隐藏模式，请传递此参数（值为密码的 md5 哈希值）
-            - show: 0 | 1 = 1    💡 0: 退出 1:进入
+            - safe_pwd: str = "000000" 💡 安全密钥，值为实际安全密钥的 md5 哈希值
+            - show: 0 | 1 = <default>  💡 是否开启隐藏模式：0:关闭 1:开启
+            - token: str = <default>   💡 令牌，调用 `P115client.user_security_key_check()` 获得，可以不传
         """
         api = complete_url("/files/hiddenswitch", base_url=base_url, app=app)
-        if isinstance(payload, bool):
-            payload = {"show": int(payload), "safe_pwd": "670b14728ad9902aecba32e22fa4f6bd"}
+        if payload in (0, 1):
+            payload = {"show": int(cast(int, payload))}
         elif isinstance(payload, (int, str)):
-            payload = {"safe_pwd": md5(f"{payload:>06}".encode("ascii")).hexdigest()}
-        payload = {"show": 1, "safe_pwd": "", **payload}
+            payload = {"show": 1, "safe_pwd": payload}
+        payload["safe_pwd"] = md5_secret_password(payload.get("safe_pwd"))
         return self.request(url=api, params=payload, async_=async_, **request_kwargs)
 
     @overload
@@ -11178,7 +11254,7 @@ class P115Client(P115OpenClient):
                 - 接收: 7
                 - 移动: 8
 
-            - with_file: 0 | 1 = 0
+            - with_file: 0 | 1 = 0 💡 是否同时删除文件
         """
         api = complete_url("/history/clean", base_url=base_url)
         if isinstance(payload, (int, str)):
@@ -20952,27 +21028,79 @@ class P115Client(P115OpenClient):
     ) -> dict | Coroutine[Any, Any, dict]:
         """回收站：删除或清空
 
-        POST https://webapi.115.com/rb/clean
+        POST https://webapi.115.com/rb/secret_del
+
+        .. note::
+            只要不指定 `tid`，就会清空回收站
+
+        .. note::
+            可以在设置中的【账号安全/安全密钥】页面下，关闭【文件(隐藏模式/清空删除回收站)】的按钮，就不需要传安全密钥了
 
         :payload:
-            - rid[0]: int | str 💡 如果没有指定任一 rid，就是清空回收站
+            - tid: int | str = "" 💡 多个用逗号 "," 隔开
+            - password: int | str = "000000" 💡 安全密钥，是 6 位数字
+        """
+        api = complete_url("/rb/secret_del", base_url=base_url)
+        if isinstance(payload, (int, str)):
+            payload = {"tid": payload}
+        elif not isinstance(payload, dict):
+            payload = {"tid": ",".join(map(str, payload))}
+        payload.setdefault("password", format(payload.get("password") or "", ">06"))
+        return self.request(url=api, method="POST", data=payload, async_=async_, **request_kwargs)
+
+    @overload
+    def recyclebin_clean2(
+        self, 
+        payload: int | str | Iterable[int | str] | dict = "", 
+        /, 
+        base_url: str | Callable[[], str] = "https://webapi.115.com", 
+        *, 
+        async_: Literal[False] = False, 
+        **request_kwargs, 
+    ) -> dict:
+        ...
+    @overload
+    def recyclebin_clean2(
+        self, 
+        payload: int | str | Iterable[int | str] | dict = "", 
+        /, 
+        base_url: str | Callable[[], str] = "https://webapi.115.com", 
+        *, 
+        async_: Literal[True], 
+        **request_kwargs, 
+    ) -> Coroutine[Any, Any, dict]:
+        ...
+    def recyclebin_clean2(
+        self, 
+        payload: int | str | Iterable[int | str] | dict = "", 
+        /, 
+        base_url: str | Callable[[], str] = "https://webapi.115.com", 
+        *, 
+        async_: Literal[False, True] = False, 
+        **request_kwargs, 
+    ) -> dict | Coroutine[Any, Any, dict]:
+        """回收站：删除或清空
+
+        POST https://webapi.115.com/rb/clean
+
+        .. note::
+            如果没有指定任一 `rid`，就是清空回收站
+
+        .. tip::
+            这个接口必须提供安全密钥。如果不提供，则默认使用 "000000"，在不必要的情况下，完全可以把安全密钥设为这个值
+
+        :payload:
+            - rid[0]: int | str
             - rid[1]: int | str
             - ...
-            - password: int | str = "000000" 💡 密码，是 6 位数字
+            - password: int | str = "000000" 💡 安全密钥
         """
         api = complete_url("/rb/clean", base_url=base_url)
         if isinstance(payload, (int, str)):
-            payload = str(payload)
-            if len(payload) <= 6:
-                payload = {"password": payload}
-            else:
-                payload = {"rid[0]": payload}
+            payload = {"rid[0]": payload}
         elif not isinstance(payload, dict):
             payload = {f"rid[{i}]": rid for i, rid in enumerate(payload)}
-        if password := payload.get("password"):
-            payload["password"] = f"{password:>06}"
-        else:
-            payload["password"] = "000000"
+        payload["password"] = format(payload.get("password") or "", ">06")
         return self.request(url=api, method="POST", data=payload, async_=async_, **request_kwargs)
 
     @overload
@@ -21013,25 +21141,27 @@ class P115Client(P115OpenClient):
 
         POST https://proapi.115.com/android/rb/secret_del
 
+        .. note::
+            只要不指定 `tid`，就会清空回收站
+
+        .. note::
+            可以在设置中的【账号安全/安全密钥】页面下，关闭【文件(隐藏模式/清空删除回收站)】的按钮，就不需要传安全密钥了
+
         :payload:
             - tid: int | str = "" 💡 多个用逗号 "," 隔开
-            - password: int | str = "000000" 💡 密码，是 6 位数字
+            - password: int | str = "000000" 💡 安全密钥，是 6 位数字
             - user_id: int | str = <default> 💡 用户 id
         """
         api = complete_url("/rb/secret_del", base_url=base_url, app=app)
         if isinstance(payload, (int, str)):
-            payload = str(payload)
-            if len(payload) <= 6:
-                payload = {"password": payload}
-            else:
-                payload = {"tid": payload}
+            payload = {"tid": payload}
         elif not isinstance(payload, dict):
             payload = {"tid": ",".join(map(str, payload))}
-        if password := payload.get("password"):
-            payload["password"] = f"{password:>06}"
-        else:
-            payload["password"] = "000000"
-        payload.setdefault("user_id", self.user_id)
+        payload = {
+            "user_id": self.user_id, 
+            "password": format(payload.get("password") or "", ">06"), 
+            **payload, 
+        }
         return self.request(url=api, method="POST", data=payload, async_=async_, **request_kwargs)
 
     @overload
@@ -21317,6 +21447,49 @@ class P115Client(P115OpenClient):
         if isinstance(payload, str):
             payload = {"share_code": payload}
         return self.request(url=api, params=payload, async_=async_, **request_kwargs)
+
+    @overload
+    def share_activate(
+        self, 
+        payload: str | dict, 
+        /, 
+        base_url: str | Callable[[], str] = "https://webapi.115.com", 
+        *, 
+        async_: Literal[False] = False, 
+        **request_kwargs, 
+    ) -> dict:
+        ...
+    @overload
+    def share_activate(
+        self, 
+        payload: str | dict, 
+        /, 
+        base_url: str | Callable[[], str] = "https://webapi.115.com", 
+        *, 
+        async_: Literal[True], 
+        **request_kwargs, 
+    ) -> Coroutine[Any, Any, dict]:
+        ...
+    def share_activate(
+        self, 
+        payload: str | dict, 
+        /, 
+        base_url: str | Callable[[], str] = "https://webapi.115.com", 
+        *, 
+        async_: Literal[False, True] = False, 
+        **request_kwargs, 
+    ) -> dict | Coroutine[Any, Any, dict]:
+        """激活分享
+
+        POST https://webapi.115.com/share/activeshare
+
+        :payload:
+            - share_code: str
+        """
+        api = complete_url("/share/activeshare", base_url=base_url)
+        if isinstance(payload, str):
+            payload = {"share_code": payload}
+        return self.request(url=api, method="POST", data=payload, async_=async_, **request_kwargs)
 
     @overload
     def share_downlist(
@@ -22668,6 +22841,9 @@ class P115Client(P115OpenClient):
 
             如果是登录状态，且查看自己的分享时，则可以不提供 receive_code，而且即使还在审核中，也能获取文件列表
 
+        .. caution::
+            虽然可以不登录即可获取数据，但是一旦过于频繁，会封禁 IP 一段时间
+
         :payload:
             - share_code: str
             - receive_code: str
@@ -22790,7 +22966,7 @@ class P115Client(P115OpenClient):
             - is_custom_code: 0 | 1 = <default>     💡 用户自定义口令（不用管）
             - auto_fill_recvcode: 0 | 1 = <default> 💡 分享链接自动填充口令（不用管）
             - share_channel: int = <default>        💡 分享渠道代码（不用管）
-            - action: str = <default>               💡 操作: 取消分享 "cancel"
+            - action: str = <default>               💡 操作: "cancel":取消分享 "delete":删除分享
             - skip_login_down_flow_limit: "" | int  = <default> 💡 设置免登录下载限制流量，如果为 "" 则不限，单位: 字节
             - access_user_ids = int | str = <default> 💡 设置访问账号，多个用逗号 "," 隔开
             - receive_user_limit: int = <default> 💡 接收次数
@@ -22844,7 +23020,7 @@ class P115Client(P115OpenClient):
             - is_custom_code: 0 | 1 = <default>     💡 用户自定义口令（不用管）
             - auto_fill_recvcode: 0 | 1 = <default> 💡 分享链接自动填充口令（不用管）
             - share_channel: int = <default>        💡 分享渠道代码（不用管）
-            - action: str = <default>               💡 操作: 取消分享 "cancel"
+            - action: str = <default>               💡 操作: "cancel":取消分享 "delete":删除分享
             - skip_login_down_flow_limit: "" | int  = <default> 💡 设置免登录下载限制流量，如果为 "" 则不限，单位: 字节
             - access_user_ids = int | str = <default> 💡 设置访问账号，多个用逗号 "," 隔开
             - receive_user_limit: int = <default> 💡 接收次数
@@ -23215,6 +23391,9 @@ class P115Client(P115OpenClient):
         """初始化上传任务，可能秒传
 
         POST https://uplb.115.com/4.0/initupload.php
+
+        .. caution::
+            这个接口，偶尔会返回 HTTP 401 错误，你只需要再次重试即可
 
         :payload:
             - fileid: str           💡 文件的 sha1
@@ -24581,6 +24760,53 @@ class P115Client(P115OpenClient):
         if isinstance(payload, str):
             payload = {"column": payload}
         payload.setdefault("open", 1)
+        return self.request(url=api, method="POST", data=payload, async_=async_, **request_kwargs)
+
+    @overload
+    def user_security_key_check(
+        self, 
+        payload: int | str | dict = "", 
+        /, 
+        app="android", 
+        base_url: str | Callable[[], str] = "https://passportapi.115.com", 
+        *, 
+        async_: Literal[False] = False, 
+        **request_kwargs, 
+    ) -> dict:
+        ...
+    @overload
+    def user_security_key_check(
+        self, 
+        payload: int | str | dict = "", 
+        /, 
+        app="android", 
+        base_url: str | Callable[[], str] = "https://passportapi.115.com", 
+        *, 
+        async_: Literal[True], 
+        **request_kwargs, 
+    ) -> Coroutine[Any, Any, dict]:
+        ...
+    def user_security_key_check(
+        self, 
+        payload: int | str | dict = "", 
+        /, 
+        app="android", 
+        base_url: str | Callable[[], str] = "https://passportapi.115.com", 
+        *, 
+        async_: Literal[False, True] = False, 
+        **request_kwargs, 
+    ) -> dict | Coroutine[Any, Any, dict]:
+        """获取安全密钥对应的 token，可以提供给某些接口，作为通过安全密钥验证的凭证
+
+        POST https://passportapi.115.com/app/1.0/android/1.0/user/security_key_check
+
+        :payload:
+            - passwd: int | str = "000000" 💡 安全密钥，值为实际安全密钥的 md5 哈希值
+        """
+        api = complete_url(f"/app/1.0/{app}/1.0/user/security_key_check", base_url=base_url)
+        if isinstance(payload, (int, str)):
+            payload = {"passwd": payload}
+        payload["passwd"] = md5_secret_password(payload.get("passwd"))
         return self.request(url=api, method="POST", data=payload, async_=async_, **request_kwargs)
 
     @overload
