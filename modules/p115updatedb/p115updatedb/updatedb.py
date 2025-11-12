@@ -26,7 +26,7 @@ from iterutils import bfs_gen
 from orjson import dumps, loads
 from p115client import check_response, P115Client
 from p115client.const import SUFFIX_TO_TYPE
-from p115client.exception import BusyOSError, P115Warning
+from p115client.exception import throw, P115BusyOSError, P115Warning
 from p115client.tool.attr import get_file_count, get_id_to_path, normalize_attr_simple
 from p115client.tool.download import iter_download_nodes
 from p115client.tool.fs_files import iter_fs_files, iter_fs_files_threaded
@@ -250,7 +250,7 @@ def iterdir(
             for attr in map(normalize_attr, resp["data"]):
                 fid = cast(int, attr["id"])
                 if fid in seen:
-                    raise BusyOSError(
+                    throw(
                         EBUSY, 
                         f"duplicate id found, means that some unpulled items have been updated: cid={cid}", 
                     )
@@ -750,7 +750,7 @@ def updatedb(
             kill_items(con, id, where="is_dir", commit=True)
             if logger is not None:
                 logger.warning("[\x1b[1;33mSKIP\x1b[0m] not a directory: %s", id)
-        except BusyOSError:
+        except P115BusyOSError:
             if logger is not None:
                 logger.warning("[\x1b[1;35mREDO\x1b[0m] directory is busy updating: %s", id)
             send(id)

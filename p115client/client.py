@@ -66,10 +66,9 @@ from .const import (
     SSOENT_TO_APP, 
 )
 from .exception import (
-    AccessError, AccessTokenError, AuthenticationError, BusyOSError, 
-    DataError, LoginError, OpenAppAuthLimitExceeded, NotSupportedError, 
-    P115OSError, OperationalError, P115Warning, P115FileExistsError, 
-    P115FileNotFoundError, P115IsADirectoryError, 
+    throw, P115OSError, P115Warning, P115AccessTokenError, 
+    P115AuthenticationError, P115LoginError, P115OpenAppAuthLimitExceeded, 
+    P115OperationalError,  
 )
 from .type import P115Cookies, P115URL
 from .util import complete_url, share_extract_payload
@@ -100,8 +99,8 @@ def json_loads(content: Buffer, /):
             return loads(content)
         else:
             return loads(memoryview(content))
-    except Exception as e:
-        raise DataError(errno.ENODATA, bytes(content)) from e
+    except Exception:
+        throw(errno.ENODATA, bytes(content))
 
 
 def default_parse(_, content: Buffer, /):
@@ -214,247 +213,247 @@ def check_response(resp: dict | Awaitable[dict], /) -> dict | Coroutine[Any, Any
             match code:
                 # {"state": false, "errno": 99, "error": "请重新登录"}
                 case 99:
-                    raise LoginError(errno.EAUTH, resp)
+                    raise P115LoginError(errno.EAUTH, resp)
                 # {"state": false, "errno": 911, "error": "请验证账号"}
                 case 911:
-                    raise AuthenticationError(errno.EAUTH, resp)
+                    throw(errno.EAUTH, resp)
                 # {"state": false, "errno": 1001, "error": "参数错误"}
                 case 1001:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": false, "errno": 10004, "error": "错误的链接"}
                 case 10004:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": false, "errno": 20001, "error": "目录名称不能为空"}
                 case 20001:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": false, "errno": 20004, "error": "该目录名称已存在。"}
                 case 20004:
-                    raise P115FileExistsError(errno.EEXIST, resp)
+                    throw(errno.EEXIST, resp)
                 # {"state": false, "errno": 20009, "error": "父目录不存在。"}
                 case 20009:
-                    raise P115FileNotFoundError(errno.ENOENT, resp)
+                    throw(errno.ENOENT, resp)
                 # {"state": false, "errno": 20018, "error": "文件不存在或已删除。"}
                 # {"state": false, "errno": 50015, "error": "文件不存在或已删除。"}
                 # {"state": false, "errno": 90008, "error": "文件（夹）不存在或已经删除。"}
                 # {"state": false, "errno": 430004, "error": "文件（夹）不存在或已删除。"}
                 case 20018 | 50015 | 90008 | 430004:
-                    raise P115FileNotFoundError(errno.ENOENT, resp)
+                    throw(errno.ENOENT, resp)
                 # {"state": false, "errno": 20020, "error": "后缀名不正确，请重新输入"}
                 # {"state": false, "errno": 20021, "error": "后缀名不正确，请重新输入"}
                 case 20020 | 20021:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": false, "errno": 31001, "error": "所预览的文件不存在。"}
                 case 31001:
-                    raise P115FileNotFoundError(errno.ENOENT, resp)
+                    throw(errno.ENOENT, resp)
                 # {"state": false, "errno": 31004, "error": "文档未上传完整，请上传完成后再进行查看。"}
                 case 31004:
-                    raise P115FileNotFoundError(errno.ENOENT, resp)
+                    throw(errno.ENOENT, resp)
                 # {"state": false, "errno": 50003, "error": "很抱歉，该文件提取码不存在。"}
                 case 50003:
-                    raise P115FileNotFoundError(errno.ENOENT, resp)
+                    throw(errno.ENOENT, resp)
                 # {"state": false, "errno": 50038, "error": "下载失败，含违规内容"}
                 case 50038:
-                    raise AccessError(errno.EACCES, resp)
+                    throw(errno.EACCES, resp)
                 # {"state": false, "errno": 91002, "error": "不能将文件复制到自身或其子目录下。"}
                 case 91002:
-                    raise NotSupportedError(errno.ENOTSUP, resp)
+                    throw(errno.ENOTSUP, resp)
                 # {"state": false, "errno": 91004, "error": "操作的文件(夹)数量超过5万个"}
                 case 91004:
-                    raise NotSupportedError(errno.ENOTSUP, resp)
+                    throw(errno.ENOTSUP, resp)
                 # {"state": false, "errno": 91005, "error": "空间不足，复制失败。"}
                 case 91005:
-                    raise OperationalError(errno.ENOSPC, resp)
+                    throw(errno.ENOSPC, resp)
                 # {"state": false, "errno": 231011, "error": "文件已删除，请勿重复操作"}
                 case 231011:
-                    raise P115FileNotFoundError(errno.ENOENT, resp)
+                    throw(errno.ENOENT, resp)
                 # {"state": false, "errno": 300104, "error": "文件超过200MB，暂不支持播放"}
                 case 300104:
-                    raise P115OSError(errno.EFBIG, resp)
+                    throw(errno.EFBIG, resp)
                 # {"state": false, "errno": 320001, "error": "很抱歉,安全密钥不正确"}
                 case 320001:
-                    raise P115OSError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": false, "errno": 590075, "error": "操作太频繁，请稍候再试"}
                 case 590075:
-                    raise BusyOSError(errno.EBUSY, resp)
+                    throw(errno.EBUSY, resp)
                 # {"state": false, "errno": 800001, "error": "目录不存在。"}
                 case 800001:
-                    raise P115FileNotFoundError(errno.ENOENT, resp)
+                    throw(errno.ENOENT, resp)
                 # {"state": false, "errno": 980006, "error": "404 Not Found"}
                 case 980006:
-                    raise NotSupportedError(errno.ENOSYS, resp)
+                    throw(errno.ENOSYS, resp)
                 # {"state": false, "errno": 990001, "error": "登陆超时，请重新登陆。"}
                 case 990001:
                     # NOTE: 可能就是被下线了
-                    raise AuthenticationError(errno.EAUTH, resp)
+                    throw(errno.EAUTH, resp)
                 # {"state": false, "errno": 990002, "error": "参数错误。"}
                 case 990002:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": false, "errno": 990003, "error": "操作失败。"}
                 case 990003:
-                    raise OperationalError(errno.EIO, resp)
+                    raise P115OperationalError(errno.EIO, resp)
                 # {"state": false, "errno": 990005, "error": "你的账号有类似任务正在处理，请稍后再试！"}
                 case 990005:
-                    raise BusyOSError(errno.EBUSY, resp)
+                    throw(errno.EBUSY, resp)
                 # {"state": false, "errno": 990009, "error": "删除[...]操作尚未执行完成，请稍后再试！"}
                 # {"state": false, "errno": 990009, "error": "还原[...]操作尚未执行完成，请稍后再试！"}
                 # {"state": false, "errno": 990009, "error": "复制[...]操作尚未执行完成，请稍后再试！"}
                 # {"state": false, "errno": 990009, "error": "移动[...]操作尚未执行完成，请稍后再试！"}
                 case 990009:
-                    raise BusyOSError(errno.EBUSY, resp)
+                    throw(errno.EBUSY, resp)
                 # {"state": false, "errno": 990023, "error": "操作的文件(夹)数量超过5万个"}
                 case 990023:
-                    raise OperationalError(errno.ENOTSUP, resp)
+                    throw(errno.ENOTSUP, resp)
                 # {"state": 0, "errno": 40100000, "error": "参数错误！"}
                 # {"state": 0, "errno": 40100000, "error": "参数缺失"}
                 case 40100000:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40101004, "error": "IP登录异常,请稍候再登录！"}
                 case 40101004:
-                    raise LoginError(errno.EAUTH, resp)
+                    raise P115LoginError(errno.EAUTH, resp)
                 # {"state": 0, "errno": 40101017, "error": "用户验证失败！"}
                 case 40101017:
-                    raise AuthenticationError(errno.EAUTH, resp)
+                    throw(errno.EAUTH, resp)
                 # {"state": 0, "errno": 40101032, "error": "请重新登录"}
                 case 40101032:
-                    raise LoginError(errno.EAUTH, resp)
+                    raise P115LoginError(errno.EAUTH, resp)
                 #################################################################
                 # Reference: https://www.yuque.com/115yun/open/rnq0cbz8tt7cu43i #
                 #################################################################
                 # {"state": 0, "errno": 40110000, "error": "请求异常需要重试"}
                 case 40110000:
-                    raise OperationalError(errno.EAGAIN, resp)
+                    raise P115OperationalError(errno.EAGAIN, resp)
                 # {"state": 0, "errno": 40140100, "error": "client_id 错误"}
                 case 40140100:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140101, "error": "code_challenge 必填"}
                 case 40140101:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140102, "error": "code_challenge_method 必须是 sha256、sha1、md5 之一"}
                 case 40140102:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140103, "error": "sign 必填"}
                 case 40140103:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140104, "error": "sign 签名失败"}
                 case 40140104:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140105, "error": "生成二维码失败"}
                 case 40140105:
-                    raise OperationalError(errno.EIO, resp)
+                    raise P115OperationalError(errno.EIO, resp)
                 # {"state": 0, "errno": 40140106, "error": "APP ID 无效"}
                 case 40140106:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140107, "error": "应用不存在"}
                 case 40140107:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140108, "error": "应用未审核通过"}
                 case 40140108:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140109, "error": "应用已被停用"}
                 case 40140109:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140110, "error": "应用已过期"}
                 case 40140110:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140111, "error": "APP Secret 错误"}
                 case 40140111:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140112, "error": "code_verifier 长度要求43~128位"}
                 case 40140112:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140113, "error": "code_verifier 验证失败"}
                 case 40140113:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140114, "error": "refresh_token 格式错误（防篡改）"}
                 case 40140114:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140115, "error": "refresh_token 签名校验失败（防篡改）"}
                 case 40140115:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140116, "error": "refresh_token 无效（已解除授权）"}
                 case 40140116:
-                    raise OperationalError(errno.EIO, resp)
+                    raise P115OperationalError(errno.EIO, resp)
                 # {"state": 0, "errno": 40140117, "error": "access_token 刷新太频繁"}
                 case 40140117:
-                    raise BusyOSError(errno.EBUSY, resp)
+                    throw(errno.EBUSY, resp)
                 # {"state": 0, "errno": 40140118, "error": "开发者认证已过期"}
                 case 40140118:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140119, "error": "refresh_token 已过期"}
                 case 40140119:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140120, "error": "refresh_token 检验失败（防篡改）"}
                 case 40140120:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140121, "error": "access_token 刷新失败"}
                 case 40140121:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140122, "error": "超出授权应用个数上限"}
                 case 40140122:
-                    raise OpenAppAuthLimitExceeded(errno.EDQUOT, resp)
+                    raise P115OpenAppAuthLimitExceeded(errno.EDQUOT, resp)
                 # {"state": 0, "errno": 40140123, "error": "access_token 格式错误（防篡改）"}
                 case 40140123:
-                    raise AccessTokenError(errno.EINVAL, resp)
+                    raise P115AccessTokenError(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140124, "error": "access_token 签名校验失败（防篡改）"}
                 case 40140124:
-                    raise AccessTokenError(errno.EINVAL, resp)
+                    raise P115AccessTokenError(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140125, "error": "access_token 无效（已过期或者已解除授权）"}
                 case 40140125:
-                    raise AccessTokenError(errno.EINVAL, resp)
+                    raise P115AccessTokenError(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140126, "error": "access_token 校验失败（防篡改）"}
                 case 40140126:
-                    raise AccessTokenError(errno.EINVAL, resp)
+                    raise P115AccessTokenError(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140127, "error": "response_type 错误"}
                 case 40140127:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140128, "error": "redirect_uri 缺少协议"}
                 case 40140128:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140129, "error": "redirect_uri 缺少域名"}
                 case 40140129:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140130, "error": "没有配置重定向域名"}
                 case 40140130:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140131, "error": "redirect_uri 非法域名"}
                 case 40140131:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140132, "error": "grant_type 错误"}
                 case 40140132:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140133, "error": "client_secret 验证失败"}
                 case 40140133:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140134, "error": "授权码 code 验证失败"}
                 case 40140134:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140135, "error": "client_id 验证失败"}
                 case 40140135:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 # {"state": 0, "errno": 40140136, "error": "redirect_uri 验证失败（防MITM）"}
                 case 40140136:
-                    raise OperationalError(errno.EINVAL, resp)
+                    throw(errno.EINVAL, resp)
                 ##################################################
                 case 50028:
-                    raise P115OSError(errno.EFBIG, resp)
+                    throw(errno.EFBIG, resp)
                 case 70004:
-                    raise P115IsADirectoryError(errno.EISDIR, resp)
+                    throw(errno.EISDIR, resp)
                 case 70005 | 70008:
-                    raise P115FileNotFoundError(errno.ENOENT, resp)
+                    throw(errno.ENOENT, resp)
         elif "error" in resp:
             match resp["error"]:
                 case "目录不存在或已转移":
-                    raise P115FileNotFoundError(errno.ENOENT, resp)
+                    throw(errno.ENOENT, resp)
                 case "更新的数据为空":
-                    raise OperationalError(errno.EINVAL, resp)
-        raise P115OSError(errno.EIO, resp)
+                    throw(errno.EINVAL, resp)
+        throw(errno.EIO, resp)
     if isinstance(resp, dict):
         return check(resp)
     elif isawaitable(resp):
         async def check_await() -> dict:
             return check(await resp)
         return check_await()
-    raise P115OSError(errno.EIO, resp)
+    throw(errno.EIO, resp)
 
 
 class ClientRequestMixin:
@@ -1574,11 +1573,11 @@ class ClientRequestMixin:
                         print("[status=2] qrcode: signed in")
                         break
                     case -1:
-                        raise LoginError(errno.EAUTH, "[status=-1] qrcode: expired")
+                        raise P115LoginError(errno.EAUTH, "[status=-1] qrcode: expired")
                     case -2:
-                        raise LoginError(errno.EAUTH, "[status=-2] qrcode: canceled")
+                        raise P115LoginError(errno.EAUTH, "[status=-2] qrcode: canceled")
                     case _:
-                        raise LoginError(errno.EAUTH, f"qrcode: aborted with {resp!r}")
+                        raise P115LoginError(errno.EAUTH, f"qrcode: aborted with {resp!r}")
             if app:
                 return cls.login_qrcode_scan_result(
                     login_uid, 
@@ -1678,11 +1677,11 @@ class ClientRequestMixin:
                         print("[status=2] qrcode: signed in")
                         break
                     case -1:
-                        raise LoginError(errno.EAUTH, "[status=-1] qrcode: expired")
+                        raise P115LoginError(errno.EAUTH, "[status=-1] qrcode: expired")
                     case -2:
-                        raise LoginError(errno.EAUTH, "[status=-2] qrcode: canceled")
+                        raise P115LoginError(errno.EAUTH, "[status=-2] qrcode: canceled")
                     case _:
-                        raise LoginError(errno.EAUTH, f"qrcode: aborted with {resp!r}")
+                        raise P115LoginError(errno.EAUTH, f"qrcode: aborted with {resp!r}")
             return cls.login_qrcode_access_token_open(
                 login_uid, 
                 base_url=base_url, 
@@ -1746,17 +1745,18 @@ class ClientRequestMixin:
 
         :return: 返回打开的文件对象，可以读取字节数据
         """
-        if headers is None:
-            headers = self.headers
-        else:
-            headers = {**self.headers, **headers}
+        request_headers = self.headers.copy()
+        if isinstance(url, P115URL):
+            request_headers.update(url.headers)
+        if headers:
+            request_headers.update(headers)
         if async_:
             if http_file_reader_cls is None:
                 from httpfile import AsyncHTTPFileReader
                 http_file_reader_cls = AsyncHTTPFileReader
             return http_file_reader_cls(
                 url, # type: ignore
-                headers=headers, 
+                headers=request_headers, 
                 start=start, 
                 seek_threshold=seek_threshold, 
             )
@@ -1765,7 +1765,7 @@ class ClientRequestMixin:
                 http_file_reader_cls = HTTPFileReader
             return http_file_reader_cls(
                 url, # type: ignore
-                headers=headers, 
+                headers=request_headers, 
                 start=start, 
                 seek_threshold=seek_threshold, 
             )
@@ -2428,7 +2428,7 @@ class P115OpenClient(ClientRequestMixin):
             for fid, info in resp["data"].items():
                 url = info["url"]
                 if strict and not url:
-                    raise P115IsADirectoryError(
+                    throw(
                         errno.EISDIR, 
                         f"{fid} is a directory, with response {resp}", 
                     )
@@ -2442,7 +2442,7 @@ class P115OpenClient(ClientRequestMixin):
                     is_dir=not url, 
                     headers=resp["headers"], 
                 )
-            raise P115FileNotFoundError(
+            throw(
                 errno.ENOENT, 
                 f"no such pickcode: {pickcode!r}, with response {resp}", 
             )
@@ -4813,7 +4813,7 @@ class P115Client(P115OpenClient):
                 try:
                     check_response(resp)
                     break
-                except AuthenticationError:
+                except P115AuthenticationError:
                     print("login error:", resp)
                     resp = yield self.login_with_qrcode(
                         app, 
@@ -5722,8 +5722,8 @@ class P115Client(P115OpenClient):
                     ):
                         check_response(resp)
                 except BaseException as e:
-                    is_auth_error = isinstance(e, (AuthenticationError, LoginError))
-                    not_access_token_error = not isinstance(e, AccessTokenError)
+                    is_auth_error = isinstance(e, (P115AuthenticationError, P115LoginError))
+                    not_access_token_error = not isinstance(e, P115AccessTokenError)
                     if (
                         cert_headers is not None and 
                         revert_cert_headers is not None and 
@@ -6959,7 +6959,7 @@ class P115Client(P115OpenClient):
                 for fid, info in resp["data"].items():
                     url = info["url"]
                     if strict and not url:
-                        raise P115IsADirectoryError(
+                        throw(
                             errno.EISDIR, 
                             f"{fid} is a directory, with response {resp}", 
                         )
@@ -6973,7 +6973,7 @@ class P115Client(P115OpenClient):
                         is_dir=not url, 
                         headers=resp["headers"], 
                     )
-                raise P115FileNotFoundError(
+                throw(
                     errno.ENOENT, 
                     f"no such pickcode: {pickcode!r}, with response {resp}", 
                 )
@@ -21659,13 +21659,13 @@ class P115Client(P115OpenClient):
             info = resp["data"]
             file_id = payload["file_id"]
             if not info:
-                raise P115FileNotFoundError(
+                throw(
                     errno.ENOENT, 
                     f"no such id: {file_id!r}, with response {resp}", 
                 )
             url = info["url"]
             if strict and not url:
-                raise P115IsADirectoryError(
+                throw(
                     errno.EISDIR, 
                     f"{file_id} is a directory, with response {resp}", 
                 )
@@ -22572,13 +22572,13 @@ class P115Client(P115OpenClient):
             info = resp["data"]
             file_id = payload["file_id"]
             if not info:
-                raise P115FileNotFoundError(
+                throw(
                     errno.ENOENT, 
                     f"no such id: {file_id!r}, with response {resp}", 
                 )
             url = info["url"]
             if strict and not url:
-                raise P115IsADirectoryError(
+                throw(
                     errno.EISDIR, 
                     f"{file_id} is a directory, with response {resp}", 
                 )
@@ -24269,16 +24269,15 @@ class P115Client(P115OpenClient):
     ) -> dict | Coroutine[Any, Any, dict]:
         """获取用户信息
 
-        GET https://my.115.com/proapi/3.0/index.php
+        GET https://my.115.com/proapi/3.0/index.php?method=user_info
 
         .. note::
             可以作为 ``staticmethod`` 使用，但必须指定查询参数 ``uid``
 
         :payload:
             - uid: int | str
-            - method: str = "user_info"
         """
-        api = complete_url("/proapi/3.0/index.php", base_url=base_url)
+        api = complete_url("/proapi/3.0/index.php", base_url=base_url, query={"method": "user_info"})
         if not isinstance(self, ClientRequestMixin):
             payload = self
         elif payload is None:
@@ -24288,7 +24287,6 @@ class P115Client(P115OpenClient):
                 raise ValueError("no payload provided")
         if not isinstance(payload, dict):
             payload = {"uid": payload}
-        payload.setdefault("method", "user_info")
         return get_request(async_, request_kwargs, self=self)(
             url=api, params=payload, **request_kwargs)
 

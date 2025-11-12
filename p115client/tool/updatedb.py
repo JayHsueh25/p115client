@@ -819,7 +819,7 @@ SELECT id, parent_id, name FROM t;""", id))
                 default=FileNotFoundError(sha1), 
             )
         elif path:
-            return P115QueryDB.id_to_path(con, path)
+            return P115QueryDB.id_to_path(con, path, is_alive=is_alive)
         return 0
 
     def get_parent_id(
@@ -904,7 +904,7 @@ SELECT id, parent_id, name FROM t;""", id))
         else:
             if path in ("", "/"):
                 return ""
-            return P115QueryDB.get_pickcode(con, P115QueryDB.id_to_path(con, path))
+            return P115QueryDB.get_pickcode(con, P115QueryDB.id_to_path(con, path, is_alive=is_alive))
 
     def get_sha1(
         self, 
@@ -948,7 +948,7 @@ SELECT id, parent_id, name FROM t;""", id))
         else:
             if path in ("", "/"):
                 return ""
-            return P115QueryDB.get_sha1(con, P115QueryDB.id_to_path(con, path))
+            return P115QueryDB.get_sha1(con, P115QueryDB.id_to_path(con, path, is_alive=is_alive))
 
     def has_id(
         self, 
@@ -984,6 +984,7 @@ SELECT id, parent_id, name FROM t;""", id))
         path: str | Sequence[str] = "", 
         ensure_file: None | bool = None, 
         parent_id: int = 0, 
+        is_alive: bool = True, 
     ) -> int:
         """查询匹配某个路径的文件或目录的信息字典，只返回找到的第 1 个
 
@@ -1000,7 +1001,7 @@ SELECT id, parent_id, name FROM t;""", id))
         :return: 找到的第 1 个匹配的节点 id
         """
         try:
-            return next(P115QueryDB.iter_id_to_path(self, path, ensure_file, parent_id))
+            return next(P115QueryDB.iter_id_to_path(self, path, ensure_file, parent_id, is_alive=is_alive))
         except StopIteration:
             raise FileNotFoundError(errno.ENOENT, path) from None
 
@@ -1666,6 +1667,7 @@ WITH pairs AS (
         path: str | Sequence[str] = "", 
         ensure_file: None | bool = None, 
         parent_id: int = 0, 
+        is_alive: bool = True, 
     ) -> Iterator[int]:
         """查询匹配某个路径的文件或目录的信息字典
 
@@ -1698,13 +1700,14 @@ WITH pairs AS (
             patht = ("", *filter(None, path))
         if not parent_id and len(patht) == 1:
             return iter((0,))
+        insertion = " AND is_alive" if is_alive else ""
         if len(patht) > 2:
-            sql = "SELECT id FROM data WHERE parent_id=? AND name=? AND is_alive AND is_dir LIMIT 1"
+            sql = f"SELECT id FROM data WHERE parent_id=? AND name=?{insertion} AND is_dir LIMIT 1"
             for name in patht[1:-1]:
                 parent_id = find(con, sql, (parent_id, name), default=-1)
                 if parent_id < 0:
                     return iter(())
-        sql = "SELECT id FROM data WHERE parent_id=? AND name=? AND is_alive"
+        sql = f"SELECT id FROM data WHERE parent_id=? AND name=?{insertion}"
         if ensure_file is None:
             sql += " ORDER BY is_dir DESC"
         elif ensure_file:

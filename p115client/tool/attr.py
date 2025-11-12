@@ -30,7 +30,7 @@ from integer_tool import try_parse_int
 from iterutils import run_gen_step, run_gen_step_iter, with_iter_next, Yield
 from p115client import check_response, P115Client, P115OpenClient
 from p115client.const import CLASS_TO_TYPE, SUFFIX_TO_TYPE, ID_TO_DIRNODE_CACHE
-from p115client.exception import P115FileNotFoundError
+from p115client.exception import throw
 from p115client.type import P115ID
 from p115client.util import (
     posix_escape_name, share_extract_payload, unescape_115_charref, 
@@ -1640,7 +1640,7 @@ def get_id_to_sha1(
                         break
                     if size < 0 or attr["size"] == size:
                         return P115ID(attr["id"], attr, about="sha1", sha1=sha1)
-        raise P115FileNotFoundError(
+        throw(
             errno.ENOENT, 
             {"state": False, "user_id": client.user_id, "sha1": sha1, "size": size, "cid": cid, "error": "not found"}, 
         )
@@ -1735,7 +1735,7 @@ def get_id_to_name(
                 attr["size"] == size
             ):
                 return P115ID(attr["id"], attr, about="name", name=name)
-        raise P115FileNotFoundError(
+        throw(
             errno.ENOENT, 
             {"state": False, "user_id": client.user_id, "name": name, "size": size, "cid": cid, "error": "not found"}, 
         )
@@ -2153,7 +2153,7 @@ def share_get_id_to_name(
                 attr["size"] == size
             ):
                 return P115ID(attr["id"], attr, about="name", name=name)
-        raise P115FileNotFoundError(
+        throw(
             errno.ENOENT, 
             {"state": False, "share_code": share_code, "name": name, "size": size, "cid": cid, "error": "not found"}, 
         )

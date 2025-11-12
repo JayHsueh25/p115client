@@ -23,7 +23,7 @@ from time import time
 from http_response import get_status_code, is_timeouterror
 from iterutils import run_gen_step
 from p115client import check_response, P115Client
-from p115client.exception import P115OSError, AuthenticationError, LoginError
+from p115client.exception import P115OSError, P115AuthenticationError, P115LoginError
 
 
 @total_ordering
@@ -375,7 +375,7 @@ def call_wrap_with_pool(get_cert_headers: Callable, /, func: Callable) -> Callab
                 except BaseException as e:
                     if isinstance(e, P115OSError) and e.args[1].get("errno") == 40101004:
                         raise
-                    if not isinstance(e, (AuthenticationError, LoginError)) and get_status_code(e) != 405:
+                    if not isinstance(e, (P115AuthenticationError, P115LoginError)) and get_status_code(e) != 405:
                         revert()
                         raise
         return run_gen_step(gen_step, async_)

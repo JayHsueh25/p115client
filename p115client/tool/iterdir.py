@@ -49,9 +49,7 @@ from iter_collect import iter_keyed_dups, SupportsLT
 from orjson import loads
 from p115client import check_response, P115Client, P115OpenClient
 from p115client.const import ID_TO_DIRNODE_CACHE
-from p115client.exception import (
-    P115FileNotFoundError, P115OSError, P115Warning, 
-)
+from p115client.exception import throw, P115Warning, P115FileNotFoundError
 from p115client.type import DirNode
 from p115client.util import posix_escape_name, share_extract_payload, unescape_115_charref
 from p115pickcode import pickcode_to_id, to_id
@@ -762,12 +760,15 @@ def _iter_fs_files(
             while True:
                 resp = yield get_next()
                 update_resp_ancestors(resp, id_to_dirnode)
-                if hold_top:
-                    top_ancestors = resp["ancestors"]
-                    if escape is None:
-                        top_path = "/".join(a["name"] for a in top_ancestors)
-                    else:
-                        top_path = "/".join(escape(a["name"]) for a in top_ancestors)
+                top_ancestors = resp["ancestors"]
+                if escape is None:
+                    top_path = "/".join(a["name"] for a in top_ancestors)
+                else:
+                    top_path = "/".join(escape(a["name"]) for a in top_ancestors)
+                if top_path:
+                    topdir = top_path + "/"
+                else:
+                    topdir = top_path = "/"
                 for info in resp["data"]:
                     if normalize_attr is None:
                         attr: Mapping | OverviewAttr = overview_attr(info)
@@ -786,6 +787,12 @@ def _iter_fs_files(
                         info["top_id"]        = top_id
                         info["top_ancestors"] = top_ancestors
                         info["top_path"]      = top_path
+                    if attr["parent_id"] == top_id:
+                       name = attr["name"]
+                       if escape is not None:
+                           name = escape(name)
+                       info["path"] = topdir + name
+                       info["ancestors"] = [*top_ancestors, {"name": attr["name"], "id": attr["id"], "parent_id": top_id}]
                     yield Yield(info)
     return run_gen_step_iter(gen_step, async_)
 
@@ -805,6 +812,8 @@ def iterdir(
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
     raise_for_changed_count: bool = False, 
     ensure_file: None | bool = None, 
+    hold_top: bool = False, 
+    escape: None | bool | Callable[[str], str] = True, 
     app: str = "android", 
     cooldown: None | float = None, 
     max_workers: None | int = 0, 
@@ -828,6 +837,8 @@ def iterdir(
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
     raise_for_changed_count: bool = False, 
     ensure_file: None | bool = None, 
+    hold_top: bool = False, 
+    escape: None | bool | Callable[[str], str] = True, 
     app: str = "android", 
     cooldown: None | float = None, 
     max_workers: None | int = 0, 
@@ -850,6 +861,8 @@ def iterdir(
     id_to_dirnode: None | EllipsisType | MutableMapping[int, tuple[str, int]] = None, 
     raise_for_changed_count: bool = False, 
     ensure_file: None | bool = None, 
+    hold_top: bool = False, 
+    escape: None | bool | Callable[[str], str] = True, 
     app: str = "android", 
     cooldown: None | float = None, 
     max_workers: None | int = 0, 
@@ -885,6 +898,14 @@ def iterdir(
         - False: 必须是目录
         - None: 可以是目录或文件
 
+    :param hold_top: 保留顶层目录信息，返回字段增加 "top_id", "top_ancestors", "top_path"
+    :param escape: 对文件名进行转义
+
+        - 如果为 None，则不处理；否则，这个函数用来对文件名中某些符号进行转义，例如 "/" 等
+        - 如果为 True，则使用 `posixpatht.escape`，会对文件名中 "/"，或单独出现的 "." 和 ".." 用 "\\" 进行转义
+        - 如果为 False，则使用 `posix_escape_name` 函数对名字进行转义，会把文件名中的 "/" 转换为 "|"
+        - 如果为 Callable，则用你所提供的调用，以或者转义后的名字
+
     :param app: 使用指定 app（设备）的接口
     :param cooldown: 冷却时间，单位为秒。如果为 None，则用默认值（非并发时为 0，并发时为 1）
     :param max_workers: 最大并发数，如果为 None 或 < 0 则自动确定，如果为 0 则单工作者惰性执行
@@ -907,6 +928,8 @@ def iterdir(
         id_to_dirnode=id_to_dirnode, 
         raise_for_changed_count=raise_for_changed_count, 
         ensure_file=ensure_file, 
+        hold_top=hold_top, 
+        escape=escape, 
         app=app, 
         cooldown=cooldown, 
         max_workers=max_workers, 
@@ -3407,13 +3430,13 @@ def iter_media_files(
             resp = yield fs_files(payload, async_=async_, **request_kwargs)
             check_response(resp)
             if int(resp["cid"]) != cid:
-                raise FileNotFoundError(errno.ENOENT, cid)
+                throw(errno.ENOENT, cid)
             if count == 0:
                 count = int(resp.get("count") or 0)
             elif count != int(resp.get("count") or 0):
                 message = f"cid={cid} detected count changes during traversing: {count} => {resp['count']}"
                 if raise_for_changed_count:
-                    raise P115OSError(errno.EIO, message)
+                    throw(errno.EIO, message)
                 else:
                     warn(message, category=P115Warning)
                 count = int(resp.get("count") or 0)

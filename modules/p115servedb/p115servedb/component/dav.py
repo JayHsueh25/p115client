@@ -37,7 +37,7 @@ from httpagentparser import detect as detect_ua # type: ignore
 from http_response import get_status_code
 from orjson import dumps as json_dumps, loads as json_loads
 from p115client import check_response, P115Client, P115URL
-from p115client.exception import AuthenticationError, BusyOSError
+from p115client.exception import P115AuthenticationError, P115BusyOSError
 from p115pickcode import is_valid_pickcode
 from path_predicate import MappingPath
 from posixpatht import escape
@@ -193,7 +193,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sha1_size ON data(sha1, size);""")
                 return make_response_for_exception(exc, code)
             elif isinstance(exc, ValueError):
                 return make_response_for_exception(exc, 400) # Bad Request
-            elif isinstance(exc, AuthenticationError):
+            elif isinstance(exc, P115AuthenticationError):
                 return make_response_for_exception(exc, 401) # Unauthorized
             elif isinstance(exc, PermissionError):
                 return make_response_for_exception(exc, 403) # Forbidden
@@ -201,7 +201,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sha1_size ON data(sha1, size);""")
                 return make_response_for_exception(exc, 404) # Not Found
             elif isinstance(exc, (IsADirectoryError, NotADirectoryError)):
                 return make_response_for_exception(exc, 406) # Not Acceptable
-            elif isinstance(exc, BusyOSError):
+            elif isinstance(exc, P115BusyOSError):
                 return make_response_for_exception(exc, 503) # Service Unavailable
             elif isinstance(exc, OSError):
                 return make_response_for_exception(exc, 500) # Internal Server Error

@@ -51,7 +51,7 @@ from httpagentparser import detect as detect_ua # type: ignore
 from openapidocs.v3 import Info # type: ignore
 from orjson import dumps, loads
 from p115client import check_response, CLASS_TO_TYPE, SUFFIX_TO_TYPE, P115Client, P115URL
-from p115client.exception import AuthenticationError, BusyOSError
+from p115client.exception import P115AuthenticationError, P115BusyOSError
 from p115client.type import P115ID
 from p115client.tool import (
     get_id_to_path, get_id_to_sha1, share_iterdir, 
@@ -360,7 +360,7 @@ def make_application(
             return make_response_for_exception(exc, code)
         elif isinstance(exc, ValueError):
             return make_response_for_exception(exc, 400) # Bad Request
-        elif isinstance(exc, AuthenticationError):
+        elif isinstance(exc, P115AuthenticationError):
             return make_response_for_exception(exc, 401) # Unauthorized
         elif isinstance(exc, PermissionError):
             return make_response_for_exception(exc, 403) # Forbidden
@@ -368,7 +368,7 @@ def make_application(
             return make_response_for_exception(exc, 404) # Not Found
         elif isinstance(exc, (IsADirectoryError, NotADirectoryError)):
             return make_response_for_exception(exc, 406) # Not Acceptable
-        elif isinstance(exc, (TooManyRequests, BusyOSError)):
+        elif isinstance(exc, (TooManyRequests, P115BusyOSError)):
             return make_response_for_exception(exc, 429) # Too Many Requests
         elif isinstance(exc, OSError):
             return make_response_for_exception(exc, 500) # Internal Server Error
@@ -534,7 +534,7 @@ def make_application(
             if count == 0:
                 count = resp["count"]
             elif count != resp["count"]:
-                raise BusyOSError(EBUSY, f"count changes during iteration: {cid}")
+                raise P115BusyOSError(EBUSY, f"count changes during iteration: {cid}")
             return resp["data"]
         if first_page_size <= 0:
             first_page_size = page_size

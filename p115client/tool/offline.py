@@ -7,15 +7,15 @@ __doc__ = "这个模块提供了一些和离线下载有关的函数"
 
 from asyncio import sleep as async_sleep
 from collections.abc import AsyncIterator, Callable, Iterable, Iterator
-from errno import EBUSY
 from itertools import count
 from os import PathLike
 from time import sleep, time
 from typing import overload, Literal
 
+from errno2 import errno
 from iterutils import run_gen_step_iter, with_iter_next, Yield, YieldFrom
 from p115client import check_response, P115Client, P115OpenClient
-from p115client.exception import BusyOSError
+from p115client.exception import throw
 
 
 @overload
@@ -114,7 +114,7 @@ def offline_iter(
                 if count < 0:
                     count = resp["count"]
                 elif count != resp["count"]:
-                    raise BusyOSError(EBUSY, f"detected count changes: {count} != {resp['count']}")
+                    throw(errno.EBUSY, f"detected count changes: {count} != {resp['count']}")
             tasks = resp["tasks"]
             if not tasks:
                 break
@@ -122,7 +122,7 @@ def offline_iter(
                 for task in tasks:
                     info_hash = task["info_hash"]
                     if info_hash in seen:
-                        raise BusyOSError(EBUSY, f"detected duplicate task: info_hash={info_hash!r}")
+                        throw(errno.EBUSY, f"detected duplicate task: info_hash={info_hash!r}")
                     add_info_hash(info_hash)
                     yield Yield(task)
             else:

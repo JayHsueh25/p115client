@@ -16,7 +16,6 @@ from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import copy
-from errno import EBUSY, ENOENT, ENOTDIR
 from inspect import isawaitable
 from itertools import cycle
 from os import PathLike
@@ -24,10 +23,11 @@ from time import sleep, time
 from typing import overload, Any, Final, Literal
 from warnings import warn
 
+from errno2 import errno
 from http_response import get_status_code, is_timeouterror
 from iterutils import run_gen_step_iter, Yield
 from p115client import check_response, P115Client, P115OpenClient
-from p115client.exception import BusyOSError, DataError, P115Warning
+from p115client.exception import throw, P115DataError, P115Warning
 
 
 get_webapi_origin: Final = cycle(("http://web.api.115.com", "https://webapi.115.com")).__next__
@@ -234,7 +234,7 @@ def iter_fs_files_serialized(
                         last_call_ts = time()
                     resp = yield fs_files(payload, async_=async_, **request_kwargs)
                     check_response(resp)
-                except DataError:
+                except P115DataError:
                     if payload["limit"] <= 1150:
                         raise
                     payload["limit"] -= 1_000
@@ -243,16 +243,16 @@ def iter_fs_files_serialized(
                     continue
                 if cid and int(resp["path"][-1]["cid"]) != cid:
                     if count < 0:
-                        raise NotADirectoryError(ENOTDIR, cid)
+                        throw(errno.ENOTDIR, cid)
                     else:
-                        raise FileNotFoundError(ENOENT, cid)
+                        throw(errno.ENOENT, cid)
                 count_new = int(resp["count"])
                 if count < 0:
                     count = count_new
                 elif count != count_new:
                     message = f"cid={cid} detected count changes during iteration: {count} -> {count_new}"
                     if raise_for_changed_count:
-                        raise BusyOSError(EBUSY, message)
+                        throw(errno.EBUSY, message)
                     else:
                         warn(message, category=P115Warning)
                     count = count_new
@@ -333,16 +333,16 @@ def iter_fs_files_threaded(
         check_response(resp)
         if cid and int(resp["path"][-1]["cid"]) != cid:
             if count < 0:
-                raise NotADirectoryError(ENOTDIR, cid)
+                throw(errno.ENOTDIR, cid)
             else:
-                raise FileNotFoundError(ENOENT, cid)
+                throw(errno.ENOENT, cid)
         count_new = int(resp["count"])
         if count < 0:
             count = count_new
         elif count != count_new:
             message = f"cid={cid} detected count changes during iteration: {count} -> {count_new}"
             if raise_for_changed_count:
-                raise BusyOSError(EBUSY, message)
+                throw(errno.EBUSY, message)
             else:
                 warn(message, category=P115Warning)
             count = count_new
@@ -472,16 +472,16 @@ async def iter_fs_files_asynchronized(
         check_response(resp)
         if cid and int(resp["path"][-1]["cid"]) != cid:
             if count < 0:
-                raise NotADirectoryError(ENOTDIR, cid)
+                throw(errno.ENOTDIR, cid)
             else:
-                raise FileNotFoundError(ENOENT, cid)
+                throw(errno.ENOENT, cid)
         count_new = int(resp["count"])
         if count < 0:
             count = count_new
         elif count != count_new:
             message = f"cid={cid} detected count changes during iteration: {count} -> {count_new}"
             if raise_for_changed_count:
-                raise BusyOSError(EBUSY, message)
+                throw(errno.EBUSY, message)
             else:
                 warn(message, category=P115Warning)
             count = count_new
