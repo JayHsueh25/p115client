@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 
+# TODO: 这个模块可以单独拎出来，作为一个公共模块 iter_call.py，而脱离 p115client 的约束
+
 __author__ = "ChenyangGao <https://chenyanggao.github.io>"
-__all__ = [
-    "iter_fs_files", "iter_fs_files_serialized", "iter_fs_files_threaded", 
-    "iter_fs_files_asynchronized", 
-]
-__doc__ = "这个模块利用 P115Client.fs_files 方法做了一些封装"
+__all__ = ["iter_call", "iter_page_call", "iter_next_call"]
 
 from asyncio import (
     shield, sleep as async_sleep, wait_for, 
@@ -16,11 +14,9 @@ from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from copy import copy
-from inspect import isawaitable
-from itertools import cycle
 from os import PathLike
 from time import sleep, time
-from typing import overload, Any, Final, Literal
+from typing import overload, Any, Literal
 from warnings import warn
 
 from errno2 import errno
@@ -30,12 +26,8 @@ from p115client import check_response, P115Client, P115OpenClient
 from p115client.exception import throw, P115DataError, P115Warning
 
 
-get_webapi_origin: Final = cycle(("http://web.api.115.com", "https://webapi.115.com")).__next__
-get_proapi_origin: Final = cycle(("http://pro.api.115.com", "https://proapi.115.com")).__next__
-
-
 @overload
-def iter_fs_files(
+def iter_call(
     client: str | PathLike | P115Client | P115OpenClient, 
     payload: int | str | dict = 0, 
     /, 
@@ -53,7 +45,7 @@ def iter_fs_files(
 ) -> Iterator[dict]:
     ...
 @overload
-def iter_fs_files(
+def iter_call(
     client: str | PathLike | P115Client | P115OpenClient, 
     payload: int | str | dict = 0, 
     /, 
@@ -70,7 +62,7 @@ def iter_fs_files(
     **request_kwargs, 
 ) -> AsyncIterator[dict]:
     ...
-def iter_fs_files(
+def iter_call(
     client: str | PathLike | P115Client | P115OpenClient, 
     payload: int | str | dict = 0, 
     /, 
@@ -128,7 +120,7 @@ def iter_fs_files(
 
 
 @overload
-def iter_fs_files_serialized(
+def serial_iter_call(
     client: str | PathLike | P115Client | P115OpenClient, 
     payload: int | str | dict = 0, 
     /, 
@@ -145,7 +137,7 @@ def iter_fs_files_serialized(
 ) -> Iterator[dict]:
     ...
 @overload
-def iter_fs_files_serialized(
+def serial_iter_call(
     client: str | PathLike | P115Client | P115OpenClient, 
     payload: int | str | dict = 0, 
     /, 
@@ -161,7 +153,7 @@ def iter_fs_files_serialized(
     **request_kwargs, 
 ) -> AsyncIterator[dict]:
     ...
-def iter_fs_files_serialized(
+def serial_iter_call(
     client: str | PathLike | P115Client | P115OpenClient, 
     payload: int | str | dict = 0, 
     /, 
@@ -269,7 +261,7 @@ def iter_fs_files_serialized(
     return run_gen_step_iter(gen_step, async_)
 
 
-def iter_fs_files_threaded(
+def thread_iter_call(
     client: str | PathLike | P115Client | P115OpenClient, 
     payload: int | str | dict = 0, 
     /, 
@@ -404,77 +396,61 @@ def iter_fs_files_threaded(
         executor.shutdown(False, cancel_futures=True)
 
 
-async def iter_fs_files_asynchronized(
-    client: str | PathLike | P115Client | P115OpenClient, 
-    payload: int | str | dict = 0, 
+# NOTE: 有时，分页大小是定死的，但你也要传，以作为一个评判依据
+# NOTE: 特别的，所有接口，如果返回的数据数是 0，则肯定没有下一页，这也是一个重要的判断依据（此时就不用管分页大小是多少了）
+async def async_iter_call[T](
+    method: Callable[..., Awaitable[T]], 
     /, 
-    page_size: int = 7_000, 
-    first_page_size: int = 0, 
-    count: int = -1, 
-    callback: None | Callable[[dict], Any] = None, 
-    app: str = "web", 
-    raise_for_changed_count: bool = False, 
-    cooldown: float = 1, 
+    start: int = 0, 
+    stop: None | int = None, 
+    step: int | Callable[[], int] = 100, 
+    payload: None | dict[str, Any] = None, 
+    payload_offset: str = "offset", 
+    payload_limit: str = "limit", 
+    response_count: None | int | str | Callable[[dict], int | str] = "count", 
+    response_data: None | str | Callable[[dict], int | str | Collection] = "data", 
+    response_next: None | str | Callable[[dict, dict], SupportsBool] = None, 
+    raise_for_changed_count: None | BaseException | type[BaseException] = None, 
+    cooldown: float | Callable[[dict], float] = 0, 
     max_workers: None | int = None, 
     **request_kwargs, 
-) -> AsyncIterator[dict]:
-    """异步并发拉取一个目录中的文件或目录的数据
+) -> AsyncIterator[T]:
+    """异步并发调用一个接口，然后返回数据
 
-    :param client: 115 网盘客户端对象
-    :param payload: 目录的 id、pickcode 或者详细的查询参数
-    :param page_size: 分页大小，如果 <= 0，则自动确定
-    :param first_page_size: 第 1 次拉取的分页大小，如果指定此参数，则会等待这次请求返回，才会开始后续，也即非并发
-    :param count: 文件总数
-    :param callback: 回调函数，调用后，会获得一个值，会添加到返回值中，key 为 "callback"
-    :param app: 使用此设备的接口
-    :param raise_for_changed_count: 分批拉取时，发现总数发生变化后，是否报错
-    :param cooldown: 冷却时间，单位为秒
-    :param max_workers: 最大工作协程数，如果为 None 或 <= 0，则为 64
-    :param request_kwargs: 其它 http 请求参数，会传给具体的请求函数，默认的是 httpx，可用参数 request 进行设置
+    :param method: 接口方法，调用以获取响应
+    :param start: 开始索引，从 0 开始计
+    :param stop: 结束索引（不含）
+    :param step: 步进索引，也即分页大小。如果是调用，则调用以获取一个步进值
+    :param payload: 查询参数字典
+    :param payload_offset: 向 `payload` 中设置偏移时，所用字段
+    :param payload_limit: 向 `payload` 中设置分页大小时，所用字段
+    :param response_count: 给出数据总数，或者从响应中获取数据总数，可用来判断是否有下一页
+    :param response_data: 从响应中获取数据，或者数据的个数，如果为 None 或者调用后抛出 LookupError，则忽略；当可用时，可用来和 `step` 作对比，不相等时认为无下一页
+    :param response_next: 断言一个响应是否有下一页（如果这个响应值不可用，可在里面抛出异常，如果抛出 `StopIteration`，则静默退出）
+    :param raise_for_changed_count: 分批拉取时，发现总数发生变化后，报什么错
+    :param cooldown: 冷却时间，单位是秒。如果得到的值小于等于 0，则不冷却；如果是调用，则会把具体的 payload 传给它，再返回冷却时间
+    :param max_workers: 最大工作协程数，如果为 None 或 <= 0，则为 16
+    :param request_kwargs: 其它请求参数，会直接传给 `method`
 
     :return: 异步迭代器
     """
-    if isinstance(client, (str, PathLike)):
-        client = P115Client(client, check_for_relogin=True)
-    if page_size <= 0:
-        page_size = 7_000
-    fs_files: Callable[..., Awaitable[dict]]
-    if not isinstance(client, P115Client) or app == "open":
-        page_size = min(page_size, 1150)
-        fs_files = client.fs_files_open
-    elif app in ("", "web", "desktop", "harmony"):
-        page_size = min(page_size, 1150)
-        request_kwargs.setdefault("base_url", get_webapi_origin)
-        fs_files = client.fs_files
-    elif app == "aps":
-        page_size = min(page_size, 1200)
-        fs_files = client.fs_files_aps
-    else:
-        request_kwargs.setdefault("base_url", get_proapi_origin)
-        request_kwargs["app"] = app
-        fs_files = client.fs_files_app
-    if first_page_size <= 0:
-        first_page_size = page_size
-    if isinstance(payload, (int, str)):
-        payload = {"cid": client.to_id(payload)}
-    payload = {
-        "asc": 1, "cid": 0, "fc_mix": 1, "o": "user_ptime", "offset": 0, 
-        "limit": first_page_size, "show_dir": 1, **payload, 
-    }
-    cid = int(payload["cid"])
+    if payload is None:
+        payload = {}
+
+
     if max_workers is None or max_workers <= 0:
         max_workers = 64
     sema = AsyncSemaphore(max_workers)
     async def get_files(payload: dict, /):
-        nonlocal count
         async with sema:
-            resp = await fs_files(payload, async_=True, **request_kwargs)
+            resp = await method(payload, async_=True, **request_kwargs)
         check_response(resp)
         if cid and int(resp["path"][-1]["cid"]) != cid:
             if count < 0:
                 throw(errno.ENOTDIR, cid)
             else:
                 throw(errno.ENOENT, cid)
+        
         count_new = int(resp["count"])
         if count < 0:
             count = count_new
@@ -485,11 +461,6 @@ async def iter_fs_files_asynchronized(
             else:
                 warn(message, category=P115Warning)
             count = count_new
-        if callback is not None:
-            ret = callback(resp)
-            if isawaitable(ret):
-                ret = await ret
-            resp["callback"] = ret
         return resp
     dq: deque[tuple[Task, int]] = deque()
     push, pop = dq.append, dq.popleft
@@ -503,26 +474,29 @@ async def iter_fs_files_asynchronized(
             last_call_ts = time()
             return create_task(get_files(args))
         task   = make_task()
-        payload["limit"] = page_size
-        offset = payload["offset"]
+ 
+        payload[field_offset] = offset
+        payload[field_limit]  = step
+
+        count = -1
         while True:
             try:
-                if first_page_size == page_size:
+                if first_step == step:
                     resp = await wait_for(shield(task), max(0, last_call_ts + cooldown - time()))
                 else:
                     resp = await task
                     first_page_size = page_size
             except TimeoutError:
-                payload["offset"] += page_size
-                if count < 0 or payload["offset"] < count:
-                    push((make_task(), payload["offset"]))
+                payload[field_offset] += step
+                if count < 0 or payload[field_offset] < count:
+                    push((make_task(), payload[field_offset]))
             except BaseException as e:
                 if get_status_code(e) >= 400 or not is_timeouterror(e):
                     raise
                 task = make_task({**payload, "offset": offset})
             else:
                 yield resp
-                reach_end = offset != resp["offset"] or count >= 0 and offset + len(resp["data"]) >= count
+                reach_end = offset != resp[field_offset] or count >= 0 and offset + len(resp["data"]) >= count
                 will_continue = False
                 while dq:
                     task, offset = pop()
@@ -540,20 +514,81 @@ async def iter_fs_files_asynchronized(
                         break
                     task = make_task()
 
-# TODO: 这个模块对外暴露，应该只有一个 iter_fs_files，其它接口，fs_files 部分由外部传入
-# TODO: 移除 callback 参数
 
-# TODO: 扩展模式下，cooldown 的默认值为 0，max_workers=0，则是序列模式
-# TODO: 支持 3 种模式，1) offset 模式(offset+limit)，2) page 模式(page+pagesize)，3) flow 模式(call, until reach flag)，也可以提供一个函数，用来判断，是否有下一页
+# NOTE: 有时，分页大小是定死的，但你也要传，以作为一个评判依据
+# NOTE: 特别的，所有接口，如果返回的数据数是 0，则肯定没有下一页，这也是一个重要的判断依据（此时就不用管分页大小是多少了）
+async def async_iter_page_call[T](
+    method: Callable[..., Awaitable[T]], 
+    /, 
+    page: int = 0, 
+    page_size: int = 100, 
+    payload: None | dict[str, Any] = None, 
+    payload_page: str = "page", 
+    payload_page_size: str = "page_size", 
+    response_count: None | int | str | Callable[[dict], int | str] = "count", 
+    response_data: None | str | Callable[[dict], int | str | Collection] = "data", 
+    response_next: None | str | Callable[[dict, dict], SupportsBool] = None, 
+    raise_for_changed_count: None | BaseException | type[BaseException] = None, 
+    cooldown: float | Callable[[dict], float] = 0, 
+    max_workers: None | int = None, 
+    **request_kwargs, 
+) -> AsyncIterator[T]:
+    """异步并发调用一个接口，然后返回数据
 
-# TODO: 上述 3 种分别提供，1) offset 模式，支持 payload(dict), start, stop, step, shuffle (是否允许乱序), raise_for_changed_count(if any) , offset_field="offset", limit_field="limit" 等参数 2) 
+    :param method: 接口方法，调用以获取响应
+    :param page: 页数，从 1 开始计
+    :param page_size: 分页大小
+    :param payload: 查询参数字典
+    :param payload_page: 向 `payload` 中设置页数时，所用字段
+    :param payload_page_size: 向 `payload` 中设置分页大小时，所用字段
+    :param response_count: 给出数据总数，或者从响应中获取数据总数，可用来判断是否有下一页
+    :param response_data: 从响应中获取数据，或者数据的个数，如果为 None 或者调用后抛出 LookupError，则忽略；当可用时，可用来和 `step` 作对比，不相等时认为无下一页
+    :param response_next: 断言一个响应是否有下一页（如果这个响应值不可用，可在里面抛出异常，如果抛出 `StopIteration`，则静默退出）
+    :param raise_for_changed_count: 分批拉取时，发现总数发生变化后，报什么错
+    :param cooldown: 冷却时间，单位是秒。如果得到的值小于等于 0，则不冷却；如果是调用，则会把具体的 payload 传给它，再返回冷却时间
+    :param max_workers: 最大工作协程数，如果为 None 或 <= 0，则为 16
+    :param request_kwargs: 其它请求参数，会直接传给 `method`
 
-# TODO: 让这个模块，支持任何的 fs_files-like 接口，例如 search、share_fs_files 等，支持用 offset 进行偏移的接口（或者其它什么名字，例如 start）
-# TODO: 或许可以再扩展，支持 page 进行偏移的接口
-# TODO: 这些接口都有个特点：1. 响应中有没有 count，如果有就用，如果没有，那么查看数据返回条数，如果不等于一页的大小，就进行停止，判断停止的条件（count, pagesize, stopmark）
+    :return: 异步迭代器
+    """
+
+
+# TODO: 或许也可以指定下一页的分页大小（可以忽略）
+# NOTE: 有时，分页大小是定死的，但你也要传，以作为一个评判依据
+# NOTE: 特别的，所有接口，如果返回的数据数是 0，则肯定没有下一页，这也是一个重要的判断依据（此时就不用管分页大小是多少了）
+async def async_iter_next_call[T](
+    method: Callable[..., Awaitable[T]], 
+    /, 
+    payload: None | dict[str, Any] = None, 
+    payload_next: str = "next", 
+    response_count: None | int | str | Callable[[dict], int | str] = "count", 
+    response_next: None | str | Callable[[dict], Any] = "next", 
+    raise_for_changed_count: None | BaseException | type[BaseException] = None, 
+    cooldown: float | Callable[[dict], float] = 0, 
+    max_workers: None | int = None, 
+    **request_kwargs, 
+) -> AsyncIterator[T]:
+    """异步并发调用一个接口，然后返回数据
+
+    :param method: 接口方法，调用以获取响应
+    :param payload: 查询参数字典
+    :param payload_next: 向 `payload` 中设置下一页的标记时，所用字段
+    :param response_count: 给出数据总数，或者从响应中获取数据总数
+    :param response_next: 从响应中获取下一页的标记
+    :param raise_for_changed_count: 分批拉取时，发现总数发生变化后，报什么错
+    :param cooldown: 冷却时间，单位是秒。如果得到的值小于等于 0，则不冷却；如果是调用，则会把具体的 payload 传给它，再返回冷却时间
+    :param max_workers: 最大工作协程数，如果为 None 或 <= 0，则为 16
+    :param request_kwargs: 其它请求参数，会直接传给 `method`
+
+    :return: 异步迭代器
+    """
+
+
+# TODO: 对外暴露，max_workers=0，则是序列模式
+# TODO: 支持 3 种模式，1) offset 模式(offset+limit)，2) page 模式(page+page_size)，3) next 模式(next_marker)
+
+# TODO: 如何判断是否有下一页：1. 响应中有没有 count，如果有就用，如果没有，那么查看数据返回条数，如果不等于一页的大小，就进行停止，判断停止的条件（count, pagesize, stopmark）
 # TODO: 判断是否有下一页：1. 看下一次的偏移和 count 对比，2. 这一页的大小和 pagesize 对比 3. 是否有结束标记
-# TODO: 有些接口的 pagesize 是定死的，有些接口甚至不能偏移（瀑布流）
-# TODO: 至少可以传入 2 个参数: offset, limit（也可以是其它名字，如果一页的大小固定，也需要传入，以便用来作判断）
-# TODO: iter_call(method, payload, offset, limit, cooldown, async_, **request_kwargs)
-# TODO: 专门再提取一个模式，用来实现上述这种，反复调用某个接口，直到结束，并且按顺序返回响应（也可以决定乱序返回）
+
+# TODO: 再支持一种参数，shuffle，允许结果以乱序返回
 
